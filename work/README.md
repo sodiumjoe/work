@@ -1,4 +1,4 @@
-# daily-workflow
+# work
 
 Daily work tracking with Obsidian integration for Claude Code. Manages daily notes, project files, plan files, and work logging through slash commands backed by composable shell scripts.
 
@@ -266,7 +266,7 @@ These are also called by `remotes()`, `remote()`, and `mremote()` for plan synci
 
 ## Dependencies
 
-- **nvim-remote plugin** (`~/.dotfiles/claude/marketplace/plugins/nvim-remote/`): Required by `nvim-edit` for opening files in neovim. Silently skipped if unavailable.
+- **nvim-remote** (`work/scripts/nvim-remote/`): Required by `nvim-edit` for opening files in neovim. Silently skipped if unavailable.
 - **Obsidian vault**: Daily notes and plan symlinks assume the vault structure above.
 - **bash 3.2+**: All scripts use bash features available in macOS default bash (nullglob, arrays, `[[ ]]`).
 - **awk**: Used by `scan-open-items` and `sync-check` for changelog parsing.
