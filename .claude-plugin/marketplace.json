@@ -1,0 +1,14 @@
+{
+  "name": "personal",
+  "owner": {
+    "name": "Joe Moon"
+  },
+  "plugins": [
+    {
+      "name": "work",
+      "source": "./work",
+      "description": "Daily work tracking with Obsidian integration — daily notes, plan management, tmux labeling, devbox sync",
+      "version": "2.0.0"
+    }
+  ]
+}

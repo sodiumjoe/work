@@ -1,0 +1,8 @@
+{
+  "name": "work",
+  "description": "Daily work tracking with Obsidian integration — daily notes, plan management, tmux labeling, devbox sync",
+  "version": "2.0.0",
+  "author": {
+    "name": "Joe Moon"
+  }
+}

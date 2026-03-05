@@ -1,0 +1,259 @@
+#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+
+const LIB = path.join(__dirname, '..', 'lib');
+const { ensure, carry, mark, logSyncEntries, inject, todayStr, notePath } = require(path.join(LIB, 'daily.js'));
+const { scanOpenItems, formatScanTSV, syncCheck } = require(path.join(LIB, 'scan.js'));
+const { createProject, resolveProject, parseChangelog } = require(path.join(LIB, 'project.js'));
+const { extractSection, getTitle } = require(path.join(LIB, 'markdown.js'));
+const { stripWikilinkSuffix } = require(path.join(LIB, 'checkbox.js'));
+
+const args = process.argv.slice(2);
+const cmd = args[0];
+
+function parseOpts(args) {
+  const opts = {};
+  const positional = [];
+  for (const a of args) {
+    if (a.startsWith('--')) {
+      const [key, ...rest] = a.slice(2).split('=');
+      opts[key] = rest.length > 0 ? rest.join('=') : true;
+    } else {
+      positional.push(a);
+    }
+  }
+  return { opts, positional };
+}
+
+function getDate(opts) {
+  return opts.date || todayStr();
+}
+
+function readStdin() {
+  if (process.stdin.isTTY) return '';
+  return fs.readFileSync(0, 'utf-8');
+}
+
+const commands = {
+  ensure() {
+    const { opts } = parseOpts(args.slice(1));
+    ensure(getDate(opts));
+  },
+
+  carry() {
+    const { opts } = parseOpts(args.slice(1));
+    carry(getDate(opts));
+  },
+
+  sync() {
+    const { opts } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    const entries = syncCheck(dateStr);
+    if (opts.apply) {
+      logSyncEntries(dateStr, entries, false);
+    } else {
+      for (const e of entries) {
+        console.log(`${e.filename}\t${e.title}\t${e.itemText}\t${e.sourceType}`);
+      }
+    }
+  },
+
+  scan() {
+    const { opts } = parseOpts(args.slice(1));
+    const results = scanOpenItems();
+    const tsv = formatScanTSV(results);
+    if (tsv) process.stdout.write(tsv + '\n');
+  },
+
+  inject() {
+    const { opts } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    let input = readStdin();
+    if (!input.trim()) {
+      const results = scanOpenItems();
+      input = formatScanTSV(results);
+    }
+    inject(dateStr, input);
+  },
+
+  gather() {
+    const { opts } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    let failed = 0;
+
+    console.log('=== ensure-daily-note ===');
+    try { ensure(dateStr); } catch (e) { console.error('FAIL: ensure'); failed = 1; }
+
+    console.log('=== carry-forward-queue ===');
+    try { carry(dateStr); } catch (e) { console.error('FAIL: carry'); failed = 1; }
+
+    console.log('=== sync-check ===');
+    try {
+      const entries = syncCheck(dateStr);
+      for (const e of entries) {
+        console.log(`${e.filename}\t${e.title}\t${e.itemText}\t${e.sourceType}`);
+      }
+    } catch (e) { console.error('FAIL: sync-check'); failed = 1; }
+
+    console.log('=== scan-open-items ===');
+    let scanOutput = '';
+    try {
+      const results = scanOpenItems();
+      scanOutput = formatScanTSV(results);
+      if (scanOutput) console.log(scanOutput);
+    } catch (e) { console.error('FAIL: scan-open-items'); failed = 1; }
+
+    console.log('=== inject-plan-items ===');
+    try { inject(dateStr, scanOutput); } catch (e) { console.error('FAIL: inject'); failed = 1; }
+
+    process.exit(failed);
+  },
+
+  mark() {
+    const { opts, positional } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    if (positional.length < 2) {
+      console.error('usage: work mark <substring> <status>');
+      process.exit(1);
+    }
+    mark(dateStr, positional[0], positional[1]);
+  },
+
+  summary() {
+    const { opts } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    const dailyNote = notePath(dateStr);
+    if (!fs.existsSync(dailyNote)) {
+      console.error('no daily note found');
+      process.exit(1);
+    }
+    const content = fs.readFileSync(dailyNote, 'utf-8');
+    const logLines = extractSection(content, 'Log');
+    const queueLines = extractSection(content, 'Queue');
+
+    const completed = logLines.filter(l => /^- \[x\]/.test(l));
+    const openQueue = queueLines.filter(l => /^- \[ \]/.test(l));
+
+    let scanOutput;
+    if (!process.stdin.isTTY && !opts.scan) {
+      scanOutput = fs.readFileSync(0, 'utf-8');
+    } else {
+      const results = scanOpenItems();
+      scanOutput = formatScanTSV(results);
+    }
+
+    const carried = [];
+    if (scanOutput && scanOutput.trim()) {
+      for (const row of scanOutput.trim().split('\n')) {
+        const [base, title, item, sourceType] = row.split('\t');
+        if (!item) continue;
+        let found = false;
+        for (const q of openQueue) {
+          const qText = stripWikilinkSuffix(q.replace(/^- \[ \] /, ''));
+          if (qText === item) { found = true; break; }
+        }
+        if (!found) {
+          const wikiPath = sourceType === 'project'
+            ? `projects/${base.replace('.md', '')}`
+            : `plans/${base.replace('.md', '')}`;
+          carried.push(`- [ ] ${item} — [[${wikiPath}|${title}]]`);
+        }
+      }
+    }
+
+    const stale = [];
+    if (scanOutput && scanOutput.trim()) {
+      for (const row of scanOutput.trim().split('\n')) {
+        const [base, title, , sourceType] = row.split('\t');
+        if (!base) continue;
+        const srcFile = sourceType === 'project'
+          ? path.join(process.env.HOME, 'stripe', 'work', 'projects', base)
+          : path.join(process.env.HOME, '.claude', 'plans', base);
+        if (fs.existsSync(srcFile)) {
+          const mtime = fs.statSync(srcFile).mtimeMs;
+          const age = Math.floor((Date.now() - mtime) / 86400000);
+          if (age > 7) stale.push(`${title} (${age}d)`);
+        }
+      }
+    }
+
+    console.log('### Completed');
+    if (completed.length === 0) {
+      console.log('(none)');
+    } else {
+      for (const e of completed) console.log(e);
+    }
+    console.log('');
+    console.log('### Open');
+    if (openQueue.length === 0 && carried.length === 0) {
+      console.log('(none)');
+    } else {
+      for (const item of openQueue) console.log(item);
+      for (const item of carried) console.log(item);
+    }
+    if (stale.length > 0) {
+      console.log('');
+      console.log('### Stale (>7d)');
+      for (const s of stale) console.log(`- ${s}`);
+    }
+  },
+
+  'create-project'() {
+    const { positional } = parseOpts(args.slice(1));
+    if (positional.length < 2) {
+      console.error('usage: work create-project <slug> <title>');
+      process.exit(1);
+    }
+    createProject(positional[0], positional[1]);
+  },
+
+  'resolve-project'() {
+    const { positional } = parseOpts(args.slice(1));
+    if (positional.length < 1) {
+      console.error('usage: work resolve-project <plan-file>');
+      process.exit(1);
+    }
+    resolveProject(positional[0]);
+  },
+
+  'parse-changelog'() {
+    const { positional } = parseOpts(args.slice(1));
+    if (positional.length < 2) {
+      console.error('usage: work parse-changelog <file> <pattern>');
+      process.exit(1);
+    }
+    parseChangelog(positional[0], positional[1]);
+  },
+
+  help() {
+    console.log(`work - daily workflow CLI
+
+Usage: work <command> [options]
+
+Commands:
+  ensure                       Create today's daily note if missing
+  carry                        Carry forward open queue items from previous day
+  sync [--apply] [--dry-run]   Find unlogged changelog completions
+  scan                         Scan plans/projects for open changelog items (TSV)
+  inject                       Add scanned items to queue (reads stdin or runs scan)
+  gather                       Run ensure + carry + sync + scan + inject
+  mark <substr> <status>       Toggle a queue item's checkbox
+  summary [--scan]             Generate end-of-day summary
+  create-project <slug> <title> Create a new project file
+  resolve-project <plan-file>  Find project file from plan frontmatter
+  parse-changelog <file> <pat> Extract matching changelog lines (TSV)
+  help                         Show this help
+
+Options:
+  --date=YYYY-MM-DD            Override date (defaults to today)`);
+  },
+};
+
+if (!cmd || !commands[cmd]) {
+  if (cmd && cmd !== 'help') console.error(`unknown command: ${cmd}\n`);
+  commands.help();
+  process.exit(cmd ? 1 : 0);
+}
+
+commands[cmd]();
