@@ -83,6 +83,11 @@ describe('parseFrontmatter', () => {
     const fm = parseFrontmatter('---\n---\n# Title');
     assert.deepEqual(fm, {});
   });
+
+  it('returns empty for unclosed frontmatter', () => {
+    const fm = parseFrontmatter('---\nstatus: active\n# Title\nstuff');
+    assert.deepEqual(fm, {});
+  });
 });
 
 describe('getTitle', () => {

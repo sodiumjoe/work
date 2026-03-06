@@ -1,6 +1,6 @@
 ---
 description: Log completed work to daily note and plan/project changelog
-allowed-tools: Read, Write, Edit, Glob, Bash(date:*), Bash(work:*), Bash(obsidian:*)
+allowed-tools: Read, Glob, Bash(date:*), Bash(work:*), Bash(obsidian:*)
 ---
 
 # Log
@@ -38,26 +38,34 @@ If the plan file exists, check if it has a parent project:
 work resolve-project '<plan-file-path>'
 ```
 
-**If a project file is found:** update the **project** changelog (not the plan):
-- Read the project file, find `## Changelog`
-- If an item exists as `- [ ]` with matching description text, check it off: `- [x] Description ✅ YYYY-MM-DD`. Match by exact description text. If multiple items contain the description as a substring, ask the user to disambiguate.
-- If no matching item exists, append: `- [x] Description ✅ YYYY-MM-DD`
+**If a project file is found:** update the **project** changelog:
+```bash
+work check-off '<project-file-path>' '<description>'
+```
 
 **If no project exists:** update the **plan** changelog:
-- Read the plan file, find `## Changelog`
-- Same matching/appending logic as above.
+```bash
+work check-off '<plan-file-path>' '<description>'
+```
+
+The `check-off` command matches an existing `- [ ]` item by description substring and checks it off with today's date. If no match exists, it appends a new checked entry.
 
 ### 5. Update the daily note
 
-Read the daily note.
-- In `## Queue`: check off matching item if present:
-  ```bash
-  work mark '<description>' '[x]'
-  ```
-  If the script reports no match, skip silently (item may not be in queue).
-- In `## Log`: append the entry with the appropriate wikilink:
-  - If project exists: `- [x] Description ✅ YYYY-MM-DD — [[projects/project-slug|Project Title]]`
-  - If no project: `- [x] Description ✅ YYYY-MM-DD — [[plans/plan-name|Plan Title]]`
+Mark the queue item as complete (skip silently if not in queue):
+```bash
+work mark '<description>' '[x]'
+```
+
+Append to the daily note log with the appropriate wikilink:
+```bash
+work append-log '<description>' --source-type=project --source-slug='<slug>' --source-title='<title>'
+```
+
+For plan-only items:
+```bash
+work append-log '<description>' --source-type=plan --source-slug='<plan-name>' --source-title='<title>'
+```
 
 ### 6. Confirm
 

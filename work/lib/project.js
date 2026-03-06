@@ -1,16 +1,15 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseFrontmatter, extractSection, getTitle } = require('./markdown.js');
+const { PROJECT_DIR, VAULT_ROOT } = require('./paths.js');
 
 function createProject(slug, title) {
   if (!slug || /[\s/]/.test(slug)) {
-    console.error('invalid slug: must be non-empty, no spaces, no /');
-    process.exit(1);
+    throw new Error('invalid slug: must be non-empty, no spaces, no /');
   }
-  const target = path.join(process.env.HOME, 'stripe', 'work', 'projects', `${slug}.md`);
+  const target = path.join(PROJECT_DIR, `${slug}.md`);
   if (fs.existsSync(target)) {
-    console.error(`exists: ${target}`);
-    process.exit(1);
+    throw new Error(`exists: ${target}`);
   }
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, `---
@@ -36,7 +35,7 @@ function resolveProject(planFile) {
   if (!fm.project) return;
   let project = fm.project;
   project = project.replace(/^\[\[/, '').replace(/\]\]$/, '');
-  const projFile = path.join(process.env.HOME, 'stripe', 'work', `${project}.md`);
+  const projFile = path.join(VAULT_ROOT, `${project}.md`);
   if (fs.existsSync(projFile)) {
     console.log(projFile);
     return;
@@ -53,7 +52,12 @@ function parseChangelog(filePath, pattern) {
   const title = getTitle(content);
   const base = path.basename(filePath);
   const changelog = extractSection(content, 'Changelog');
-  const re = new RegExp(pattern);
+  let re;
+  try {
+    re = new RegExp(pattern);
+  } catch (e) {
+    throw new Error(`invalid regex pattern: ${pattern}`);
+  }
   for (const line of changelog) {
     if (re.test(line)) {
       console.log(`${base}\t${title}\t${line}`);

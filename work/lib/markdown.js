@@ -64,8 +64,9 @@ function parseFrontmatter(content) {
   const lines = content.split('\n');
   if (lines[0] !== '---') return {};
   const result = {};
+  let closed = false;
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i] === '---') break;
+    if (lines[i] === '---') { closed = true; break; }
     const match = lines[i].match(/^(\w+):\s*(.*)$/);
     if (match) {
       let val = match[2].trim();
@@ -75,7 +76,7 @@ function parseFrontmatter(content) {
       result[match[1]] = val;
     }
   }
-  return result;
+  return closed ? result : {};
 }
 
 function getTitle(content) {

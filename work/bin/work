@@ -3,11 +3,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const LIB = path.join(__dirname, '..', 'lib');
-const { ensure, carry, mark, logSyncEntries, inject, todayStr, notePath } = require(path.join(LIB, 'daily.js'));
+const { ensure, carry, mark, logSyncEntries, inject, parseStatusArg } = require(path.join(LIB, 'daily.js'));
+const { notePath, todayStr, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
 const { scanOpenItems, formatScanTSV, syncCheck } = require(path.join(LIB, 'scan.js'));
 const { createProject, resolveProject, parseChangelog } = require(path.join(LIB, 'project.js'));
 const { extractSection, getTitle } = require(path.join(LIB, 'markdown.js'));
 const { stripWikilinkSuffix } = require(path.join(LIB, 'checkbox.js'));
+const { checkOff, appendLog } = require(path.join(LIB, 'changelog.js'));
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -114,8 +116,7 @@ const commands = {
     const { opts, positional } = parseOpts(args.slice(1));
     const dateStr = getDate(opts);
     if (positional.length < 2) {
-      console.error('usage: work mark <substring> <status>');
-      process.exit(1);
+      throw new Error('usage: work mark <substring> <status>');
     }
     mark(dateStr, positional[0], positional[1]);
   },
@@ -125,8 +126,7 @@ const commands = {
     const dateStr = getDate(opts);
     const dailyNote = notePath(dateStr);
     if (!fs.existsSync(dailyNote)) {
-      console.error('no daily note found');
-      process.exit(1);
+      throw new Error('no daily note found');
     }
     const content = fs.readFileSync(dailyNote, 'utf-8');
     const logLines = extractSection(content, 'Log');
@@ -135,13 +135,8 @@ const commands = {
     const completed = logLines.filter(l => /^- \[x\]/.test(l));
     const openQueue = queueLines.filter(l => /^- \[ \]/.test(l));
 
-    let scanOutput;
-    if (!process.stdin.isTTY && !opts.scan) {
-      scanOutput = fs.readFileSync(0, 'utf-8');
-    } else {
-      const results = scanOpenItems();
-      scanOutput = formatScanTSV(results);
-    }
+    const results = scanOpenItems();
+    const scanOutput = formatScanTSV(results);
 
     const carried = [];
     if (scanOutput && scanOutput.trim()) {
@@ -168,8 +163,8 @@ const commands = {
         const [base, title, , sourceType] = row.split('\t');
         if (!base) continue;
         const srcFile = sourceType === 'project'
-          ? path.join(process.env.HOME, 'stripe', 'work', 'projects', base)
-          : path.join(process.env.HOME, '.claude', 'plans', base);
+          ? path.join(PROJECT_DIR, base)
+          : path.join(PLAN_DIR, base);
         if (fs.existsSync(srcFile)) {
           const mtime = fs.statSync(srcFile).mtimeMs;
           const age = Math.floor((Date.now() - mtime) / 86400000);
@@ -202,8 +197,7 @@ const commands = {
   'create-project'() {
     const { positional } = parseOpts(args.slice(1));
     if (positional.length < 2) {
-      console.error('usage: work create-project <slug> <title>');
-      process.exit(1);
+      throw new Error('usage: work create-project <slug> <title>');
     }
     createProject(positional[0], positional[1]);
   },
@@ -211,17 +205,54 @@ const commands = {
   'resolve-project'() {
     const { positional } = parseOpts(args.slice(1));
     if (positional.length < 1) {
-      console.error('usage: work resolve-project <plan-file>');
-      process.exit(1);
+      throw new Error('usage: work resolve-project <plan-file>');
     }
     resolveProject(positional[0]);
+  },
+
+  queue() {
+    const { opts } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    const np = notePath(dateStr);
+    if (!fs.existsSync(np)) {
+      throw new Error('no daily note found');
+    }
+    const content = fs.readFileSync(np, 'utf-8');
+    const queueLines = extractSection(content, 'Queue');
+    const { parseCheckboxItems } = require(path.join(LIB, 'checkbox.js'));
+    const items = parseCheckboxItems(queueLines);
+    for (const item of items) {
+      if (item.state === 'x') continue;
+      let projSlug = '';
+      if (item.wikilink && item.wikilink.startsWith('projects/')) {
+        projSlug = item.wikilink.replace(/^projects\//, '').replace(/\|.*$/, '');
+      }
+      console.log(`${item.state}\t${item.text}\t${projSlug}`);
+    }
+  },
+
+  'check-off'() {
+    const { opts, positional } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    if (positional.length < 2) {
+      throw new Error('usage: work check-off <file> <description>');
+    }
+    checkOff(positional[0], positional[1], dateStr);
+  },
+
+  'append-log'() {
+    const { opts, positional } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    if (positional.length < 1) {
+      throw new Error('usage: work append-log <description>');
+    }
+    appendLog(dateStr, positional[0], opts['source-type'], opts['source-slug'], opts['source-title']);
   },
 
   'parse-changelog'() {
     const { positional } = parseOpts(args.slice(1));
     if (positional.length < 2) {
-      console.error('usage: work parse-changelog <file> <pattern>');
-      process.exit(1);
+      throw new Error('usage: work parse-changelog <file> <pattern>');
     }
     parseChangelog(positional[0], positional[1]);
   },
@@ -234,19 +265,25 @@ Usage: work <command> [options]
 Commands:
   ensure                       Create today's daily note if missing
   carry                        Carry forward open queue items from previous day
-  sync [--apply] [--dry-run]   Find unlogged changelog completions
+  sync [--apply]               Find unlogged changelog completions
   scan                         Scan plans/projects for open changelog items (TSV)
   inject                       Add scanned items to queue (reads stdin or runs scan)
   gather                       Run ensure + carry + sync + scan + inject
   mark <substr> <status>       Toggle a queue item's checkbox
-  summary [--scan]             Generate end-of-day summary
+  queue                        List open/in-progress queue items (TSV)
+  summary                      Generate end-of-day summary
+  check-off <file> <desc>      Check off or append a changelog entry
+  append-log <desc>            Append entry to daily note log section
   create-project <slug> <title> Create a new project file
   resolve-project <plan-file>  Find project file from plan frontmatter
   parse-changelog <file> <pat> Extract matching changelog lines (TSV)
   help                         Show this help
 
 Options:
-  --date=YYYY-MM-DD            Override date (defaults to today)`);
+  --date=YYYY-MM-DD            Override date (defaults to today)
+  --source-type=plan|project   Source type for append-log
+  --source-slug=<slug>         Source slug for append-log wikilink
+  --source-title=<title>       Source title for append-log wikilink`);
   },
 };
 
@@ -256,4 +293,9 @@ if (!cmd || !commands[cmd]) {
   process.exit(cmd ? 1 : 0);
 }
 
-commands[cmd]();
+try {
+  commands[cmd]();
+} catch (e) {
+  console.error(e.message);
+  process.exit(1);
+}

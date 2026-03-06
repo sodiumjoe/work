@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.0.0 — 2026-03-05
+
+Rewrote from bash scripts to Node.js modules with a single `work` CLI.
+
+- Replaced all bash scripts with `lib/*.js` modules and `bin/work` CLI
+- Created `lib/paths.js` — centralized path constants (VAULT_ROOT, PLAN_DIR, PROJECT_DIR)
+- Fixed `lib/atomic.js` — cross-volume rename bug (temp file now same directory as target)
+- Fixed `lib/markdown.js` — parseFrontmatter returns `{}` on unclosed frontmatter
+- Fixed `lib/daily.js` — TOCTOU race in `mark` (search inside atomicRewrite callback)
+- Added `parseStatusArg` — validates mark status input, accepts `[/]` or bare `/`
+- Fixed `lib/scan.js` — syncCheck dedup scoped to Log section instead of entire daily note
+- Fixed `lib/daily.js` inject — no double-blank-lines when inserting before section
+- Fixed `lib/project.js` — regex try/catch in parseChangelog, throws instead of process.exit
+- Fixed `scripts/nvim-edit` — relative path resolution instead of hardcoded absolute path
+- Created `lib/changelog.js` — `checkOff` and `appendLog` functions
+- Added `work check-off` and `work append-log` CLI commands
+- Updated `commands/log.md` — uses CLI commands instead of LLM file editing
+- Added `work queue` command — TSV output of open/in-progress queue items
+- Removed `Write` and `Edit` from `commands/log.md` allowed-tools
+- All lib modules throw errors instead of calling process.exit
+- Added error wrapper in bin/work for consistent exit handling
+- Added package.json with test script and engine requirement
+- Added tests: parseFrontmatter unclosed, parseStatusArg, checkOff
+
 ## 1.2.0 — 2026-02-26
 
 - Added `set -euo pipefail` to all scripts (`set -uo pipefail` for gather)

@@ -1,17 +1,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { VAULT_ROOT, notePath, todayStr } = require('./paths.js');
 const { extractSection, findSectionLineRange, insertAtEndOfSection, insertBeforeNextSection, getTitle } = require('./markdown.js');
 const { parseCheckboxItem, parseCheckboxItems, setState, stripWikilinkSuffix } = require('./checkbox.js');
 const { atomicRewrite } = require('./atomic.js');
-
-function notePath(dateStr) {
-  return path.join(process.env.HOME, 'stripe', 'work', `${dateStr}.md`);
-}
-
-function todayStr() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
-}
 
 function ensure(dateStr) {
   const p = notePath(dateStr);
@@ -58,58 +50,61 @@ function carry(dateStr) {
 }
 
 function findPreviousNote(dateStr) {
-  const dir = path.join(process.env.HOME, 'stripe', 'work');
-  if (!fs.existsSync(dir)) return null;
-  const files = fs.readdirSync(dir)
+  if (!fs.existsSync(VAULT_ROOT)) return null;
+  const files = fs.readdirSync(VAULT_ROOT)
     .filter(f => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
     .sort()
     .reverse();
   for (const f of files) {
     const name = f.replace('.md', '');
-    if (name < dateStr) return path.join(dir, f);
+    if (name < dateStr) return path.join(VAULT_ROOT, f);
   }
   return null;
+}
+
+function parseStatusArg(status) {
+  const bracketed = status.match(/^\[(.)\]$/);
+  if (bracketed) return bracketed[1];
+  if (status.length === 1 && ' /x'.includes(status)) return status;
+  throw new Error(`invalid status: ${status} (expected [ ], [/], [x], or single char)`);
 }
 
 function mark(dateStr, substring, status) {
   const dailyNote = notePath(dateStr);
   if (!fs.existsSync(dailyNote)) {
-    console.error('no daily note found');
-    process.exit(1);
+    throw new Error('no daily note found');
   }
-  const content = fs.readFileSync(dailyNote, 'utf-8');
-  const allLines = content.split('\n');
-  const matches = [];
-  let inQueue = false;
-  for (let i = 0; i < allLines.length; i++) {
-    if (/^##\s+Queue/.test(allLines[i])) { inQueue = true; continue; }
-    if (inQueue && /^## /.test(allLines[i])) break;
-    if (inQueue && /^- \[.\]/.test(allLines[i])) {
-      let desc = allLines[i].replace(/^- \[.\] /, '');
-      desc = stripWikilinkSuffix(desc);
-      if (desc.includes(substring)) {
-        matches.push({ line: allLines[i], lineNum: i });
+  const char = parseStatusArg(status);
+  let resultLine;
+  atomicRewrite(dailyNote, content => {
+    const allLines = content.split('\n');
+    const matches = [];
+    let inQueue = false;
+    for (let i = 0; i < allLines.length; i++) {
+      if (/^##\s+Queue/.test(allLines[i])) { inQueue = true; continue; }
+      if (inQueue && /^## /.test(allLines[i])) break;
+      if (inQueue && /^- \[.\]/.test(allLines[i])) {
+        let desc = allLines[i].replace(/^- \[.\] /, '');
+        desc = stripWikilinkSuffix(desc);
+        if (desc.includes(substring)) {
+          matches.push({ line: allLines[i], lineNum: i });
+        }
       }
     }
-  }
-  if (matches.length === 0) {
-    console.error(`no queue item matching "${substring}"`);
-    process.exit(1);
-  }
-  if (matches.length > 1) {
-    console.error(`multiple matches for "${substring}":`);
-    for (const m of matches) console.error(`  ${m.line}`);
-    process.exit(1);
-  }
-  const target = matches[0];
-  const char = status[1];
-  const newLine = setState(target.line, char);
-  atomicRewrite(dailyNote, c => {
-    const lines = c.split('\n');
-    lines[target.lineNum] = newLine;
-    return lines.join('\n');
+    if (matches.length === 0) {
+      throw new Error(`no queue item matching "${substring}"`);
+    }
+    if (matches.length > 1) {
+      const detail = matches.map(m => `  ${m.line}`).join('\n');
+      throw new Error(`multiple matches for "${substring}":\n${detail}`);
+    }
+    const target = matches[0];
+    const newLine = setState(target.line, char);
+    allLines[target.lineNum] = newLine;
+    resultLine = newLine;
+    return allLines.join('\n');
   });
-  console.log(newLine);
+  console.log(resultLine);
 }
 
 function logSyncEntries(dateStr, entries, dryRun) {
@@ -126,8 +121,7 @@ function logSyncEntries(dateStr, entries, dryRun) {
   }
   const dailyNote = notePath(dateStr);
   if (!fs.existsSync(dailyNote)) {
-    console.error('no daily note found');
-    process.exit(1);
+    throw new Error('no daily note found');
   }
   atomicRewrite(dailyNote, content => insertAtEndOfSection(content, 'Log', formatted));
   console.log(`logged ${formatted.length} sync entry/entries`);
@@ -165,23 +159,24 @@ function inject(dateStr, scanOutput) {
     if (logIdx !== -1) {
       const before = lines.slice(0, logIdx);
       const after = lines.slice(logIdx);
-      return [...before, ...carried, '', ...after].join('\n');
+      const needsBlank = before.length === 0 || before[before.length - 1] !== '';
+      return [...before, ...carried, ...(needsBlank ? [''] : []), ...after].join('\n');
     }
     const range = findSectionLineRange(lines, 'Queue');
     if (!range) return c;
     const before = lines.slice(0, range.end);
     const after = lines.slice(range.end);
-    return [...before, ...carried, '', ...after].join('\n');
+    const needsBlank = before.length === 0 || before[before.length - 1] !== '';
+    return [...before, ...carried, ...(needsBlank ? [''] : []), ...after].join('\n');
   });
   console.log(`injected ${carried.length} plan item(s) into queue`);
 }
 
 module.exports = {
-  notePath,
-  todayStr,
   ensure,
   carry,
   mark,
   logSyncEntries,
   inject,
+  parseStatusArg,
 };

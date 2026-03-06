@@ -2,7 +2,7 @@
 NVIM_ADDR="${NVIM_SOCKET_PATH:-$NVIM}"
 [[ -z "$NVIM_ADDR" ]] && exit 0
 [[ -z "$1" ]] && exit 1
-NR=~/stripe/work/personal-marketplace/work/scripts/nvim-remote
+NR="$(dirname "$0")/nvim-remote"
 win=$("$NR/nvim-lua" "return require('sodium.utils').editor_window()")
 [[ -z "$win" ]] && exit 0
 "$NR/nvim-open" --window "$win" "$1"

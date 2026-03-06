@@ -1,15 +1,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { extractSection, getTitle } = require('./markdown.js');
-const { notePath, todayStr } = require('./daily.js');
+const { PLAN_DIR, PROJECT_DIR, notePath } = require('./paths.js');
 
 function scanOpenItems() {
   const results = [];
-  const planDir = path.join(process.env.HOME, '.claude', 'plans');
-  if (fs.existsSync(planDir)) {
-    const files = fs.readdirSync(planDir).filter(f => f.endsWith('.md'));
+  if (fs.existsSync(PLAN_DIR)) {
+    const files = fs.readdirSync(PLAN_DIR).filter(f => f.endsWith('.md'));
     for (const f of files) {
-      const filePath = path.join(planDir, f);
+      const filePath = path.join(PLAN_DIR, f);
       const content = fs.readFileSync(filePath, 'utf-8');
       const changelog = extractSection(content, 'Changelog');
       const title = getTitle(content);
@@ -21,11 +20,10 @@ function scanOpenItems() {
       }
     }
   }
-  const projDir = path.join(process.env.HOME, 'stripe', 'work', 'projects');
-  if (fs.existsSync(projDir)) {
-    const files = fs.readdirSync(projDir).filter(f => f.endsWith('.md') && f !== '_template.md');
+  if (fs.existsSync(PROJECT_DIR)) {
+    const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md');
     for (const f of files) {
-      const filePath = path.join(projDir, f);
+      const filePath = path.join(PROJECT_DIR, f);
       const content = fs.readFileSync(filePath, 'utf-8');
       const changelog = extractSection(content, 'Changelog');
       const title = getTitle(content);
@@ -48,11 +46,10 @@ function formatScanTSV(results) {
 
 function syncCheck(dateStr) {
   const results = [];
-  const planDir = path.join(process.env.HOME, '.claude', 'plans');
-  if (fs.existsSync(planDir)) {
-    const files = fs.readdirSync(planDir).filter(f => f.endsWith('.md'));
+  if (fs.existsSync(PLAN_DIR)) {
+    const files = fs.readdirSync(PLAN_DIR).filter(f => f.endsWith('.md'));
     for (const f of files) {
-      const filePath = path.join(planDir, f);
+      const filePath = path.join(PLAN_DIR, f);
       const content = fs.readFileSync(filePath, 'utf-8');
       if (!content.includes(`✅ ${dateStr}`)) continue;
       const changelog = extractSection(content, 'Changelog');
@@ -65,11 +62,10 @@ function syncCheck(dateStr) {
       }
     }
   }
-  const projDir = path.join(process.env.HOME, 'stripe', 'work', 'projects');
-  if (fs.existsSync(projDir)) {
-    const files = fs.readdirSync(projDir).filter(f => f.endsWith('.md') && f !== '_template.md');
+  if (fs.existsSync(PROJECT_DIR)) {
+    const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md');
     for (const f of files) {
-      const filePath = path.join(projDir, f);
+      const filePath = path.join(PROJECT_DIR, f);
       const content = fs.readFileSync(filePath, 'utf-8');
       if (!content.includes(`✅ ${dateStr}`)) continue;
       const changelog = extractSection(content, 'Changelog');
@@ -85,9 +81,11 @@ function syncCheck(dateStr) {
   const dailyNote = notePath(dateStr);
   if (!fs.existsSync(dailyNote) || results.length === 0) return results;
   const dailyContent = fs.readFileSync(dailyNote, 'utf-8');
+  const logLines = extractSection(dailyContent, 'Log');
+  const logText = logLines.join('\n');
   return results.filter(r => {
     const textWithoutDate = r.itemText.replace(/ ✅ \d{4}-\d{2}-\d{2}$/, '');
-    return !dailyContent.includes(textWithoutDate);
+    return !logText.includes(textWithoutDate);
   });
 }
 
