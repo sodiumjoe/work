@@ -80,9 +80,9 @@ Ask the user to confirm before proceeding. The user may exclude specific plans f
 
 ### 7. Write monthly summary
 
-**File:** `/Users/moon/stripe/work/monthly/YYYY-MM.md`
+**File:** `$(work paths vault)/monthly/YYYY-MM.md`
 
-Create the `monthly/` directory if it does not exist: `mkdir -p /Users/moon/stripe/work/monthly`
+Create the `monthly/` directory if it does not exist: `mkdir -p $(work paths vault)/monthly`
 
 Format — group by project, then standalone plans:
 ```markdown
@@ -114,8 +114,8 @@ If the summary file already exists, replace its content entirely.
 Before deleting, back up plans marked for deletion (abandoned active plans and non-primary duplicates):
 
 ```
-mkdir -p /Users/moon/stripe/work/archive/.backup-YYYY-MM-DD
-cp ~/.claude/plans/<filename>.md /Users/moon/stripe/work/archive/.backup-YYYY-MM-DD/
+mkdir -p $(work paths vault)/archive/.backup-YYYY-MM-DD
+cp ~/.claude/plans/<filename>.md $(work paths vault)/archive/.backup-YYYY-MM-DD/
 rm ~/.claude/plans/<filename>.md
 ```
 
@@ -123,11 +123,11 @@ Use today's date for the backup directory name. Backups can be cleaned up manual
 
 ### 9. Move archived plans
 
-Move confirmed plan files from `~/.claude/plans/` to `/Users/moon/stripe/work/archive/`:
+Move confirmed plan files from `~/.claude/plans/` to `$(work paths vault)/archive/`:
 
 ```
-mkdir -p /Users/moon/stripe/work/archive
-mv ~/.claude/plans/<filename>.md /Users/moon/stripe/work/archive/
+mkdir -p $(work paths vault)/archive
+mv ~/.claude/plans/<filename>.md $(work paths vault)/archive/
 ```
 
 The archive directory lives in the Obsidian vault but is NOT under the `~/.claude/plans/` symlink, so archived plans will not sync to devboxes.

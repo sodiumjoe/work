@@ -79,7 +79,9 @@ Commands:
   append-log <desc>            Append entry to daily note log section
   create-project <slug> <title> Create a new project file
   resolve-project <plan-file>  Find project file from plan frontmatter
+  paths [vault|plans|projects]  Print configured paths
   parse-changelog <file> <pat> Extract matching changelog lines (TSV)
+  help                         Show this help
 
 Options:
   --date=YYYY-MM-DD            Override date (defaults to today)
@@ -87,6 +89,18 @@ Options:
   --source-slug=<slug>         Source slug for append-log wikilink
   --source-title=<title>       Source title for append-log wikilink
 ```
+
+## Slash commands
+
+| Command | Description |
+|---------|-------------|
+| `/start-day` | Initialize daily note, carry forward open items, review work |
+| `/next` | Review open work, pick a task, start or resume it |
+| `/log` | Log completed work to daily note and plan/project changelog |
+| `/note` | Append a note, link, or discovery to today's daily note |
+| `/end-day` | Summarize progress and open items |
+| `/name` | Set a descriptive label on the current tmux window |
+| `/archive-plans` | Archive completed plans and write a monthly summary |
 
 ## Data model
 
@@ -101,7 +115,7 @@ Commands that output structured data use tab-separated values: `filename\ttitle\
 
 ### Daily note format
 
-Path: `~/stripe/work/YYYY-MM-DD.md`
+Path: `$WORK_VAULT/YYYY-MM-DD.md` (default: `~/work/YYYY-MM-DD.md`)
 
 ```markdown
 ## Queue
@@ -124,7 +138,7 @@ Path: `~/stripe/work/YYYY-MM-DD.md`
 
 ### Project file format
 
-Path: `~/stripe/work/projects/<slug>.md`
+Path: `$WORK_VAULT/projects/<slug>.md`
 
 ```markdown
 ---
@@ -187,16 +201,29 @@ status: active
 
 Completed changelog entries use `✅ YYYY-MM-DD` suffix for Obsidian Tasks integration.
 
+## Configuration
+
+Config file: `$XDG_CONFIG_HOME/work/config.json` (default `~/.config/work/config.json`)
+
+```json
+{
+  "vault": "/path/to/obsidian/vault",
+  "plans": "/path/to/plans"
+}
+```
+
+All fields are optional. The `WORK_VAULT` environment variable takes precedence over the config file `vault` field. Default vault: `~/work`. Default plans: `~/.claude/plans`.
+
 ## File layout
 
 | Path | Purpose |
 |------|---------|
-| `~/stripe/work/` | Obsidian vault root |
-| `~/stripe/work/YYYY-MM-DD.md` | Daily notes |
-| `~/stripe/work/projects/` | Project files |
-| `~/.claude/plans/` | Active plan files (symlinked into vault at `~/stripe/work/plans/`) |
-| `~/stripe/work/archive/` | Archived plans |
-| `~/stripe/work/monthly/YYYY-MM.md` | Monthly work summaries |
+| `$WORK_VAULT/` | Obsidian vault root |
+| `$WORK_VAULT/YYYY-MM-DD.md` | Daily notes |
+| `$WORK_VAULT/projects/` | Project files |
+| `~/.claude/plans/` | Active plan files (symlinked into vault at `$WORK_VAULT/plans/`) |
+| `$WORK_VAULT/archive/` | Archived plans |
+| `$WORK_VAULT/monthly/YYYY-MM.md` | Monthly work summaries |
 
 ## Devbox integration
 

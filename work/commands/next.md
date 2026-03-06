@@ -1,6 +1,6 @@
 ---
 description: Review open work and suggest what to do next
-allowed-tools: Read, Edit, Write, Glob, Grep, Bash(date:*), Bash(work:*), Bash(~/stripe/work/personal-marketplace/work/scripts/nvim-edit:*), Bash(obsidian:*), Bash(tmux:*), EnterPlanMode, Bash(~/stripe/work/personal-marketplace/work/scripts/nvim-remote/*), AskUserQuestion
+allowed-tools: Read, Edit, Write, Glob, Grep, Bash(date:*), Bash(work:*), Bash(nvim-edit:*), Bash(obsidian:*), Bash(tmux:*), EnterPlanMode, AskUserQuestion
 ---
 
 # Next
@@ -79,7 +79,7 @@ This is a new task that needs a project and a plan.
 5. Add the plan wikilink to the project's `## Plans` section: `- [[plans/plan-filename|Plan Title]]`
 6. Open the plan file in the first non-Agentic neovim window (skip silently if the command fails):
    ```bash
-   ~/stripe/work/personal-marketplace/work/scripts/nvim-edit '<absolute-path-to-plan-file>'
+   nvim-edit '<absolute-path-to-plan-file>'
 
    ```
 7. Update the queue item to use the project wikilink: `— [[projects/<slug>|Project Title]]`

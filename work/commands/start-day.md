@@ -1,6 +1,6 @@
 ---
 description: Start the workday — initialize daily note and review open work
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash(date:*), Bash(work:*), Bash(~/stripe/work/personal-marketplace/work/scripts/nvim-edit:*), Bash(obsidian:*), Bash(~/stripe/work/personal-marketplace/work/scripts/nvim-remote/*)
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(date:*), Bash(work:*), Bash(nvim-edit:*), Bash(obsidian:*)
 ---
 
 # Start Day
@@ -26,7 +26,7 @@ If the user declines, no data is lost — entries will reappear on the next gath
 Open today's daily note in the neovim editor window. Skip silently if the command fails.
 
 ```bash
-~/stripe/work/personal-marketplace/work/scripts/nvim-edit "$HOME/stripe/work/$(date +%Y-%m-%d).md"
+nvim-edit "$(work paths vault)/$(date +%Y-%m-%d).md"
 ```
 
 ### 2. Present the queue

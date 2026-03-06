@@ -4,7 +4,7 @@ const path = require('node:path');
 
 const LIB = path.join(__dirname, '..', 'lib');
 const { ensure, carry, mark, logSyncEntries, inject, parseStatusArg } = require(path.join(LIB, 'daily.js'));
-const { notePath, todayStr, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
+const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
 const { scanOpenItems, formatScanTSV, syncCheck } = require(path.join(LIB, 'scan.js'));
 const { createProject, resolveProject, parseChangelog } = require(path.join(LIB, 'project.js'));
 const { extractSection, getTitle } = require(path.join(LIB, 'markdown.js'));
@@ -257,6 +257,17 @@ const commands = {
     parseChangelog(positional[0], positional[1]);
   },
 
+  paths() {
+    const { positional } = parseOpts(args.slice(1));
+    const key = positional[0];
+    const map = { vault: VAULT_ROOT, plans: PLAN_DIR, projects: PROJECT_DIR };
+    if (!key || !map[key]) {
+      for (const [k, v] of Object.entries(map)) console.log(`${k}\t${v}`);
+    } else {
+      process.stdout.write(map[key]);
+    }
+  },
+
   help() {
     console.log(`work - daily workflow CLI
 
@@ -276,6 +287,7 @@ Commands:
   append-log <desc>            Append entry to daily note log section
   create-project <slug> <title> Create a new project file
   resolve-project <plan-file>  Find project file from plan frontmatter
+  paths [vault|plans|projects]  Print configured paths
   parse-changelog <file> <pat> Extract matching changelog lines (TSV)
   help                         Show this help
 
