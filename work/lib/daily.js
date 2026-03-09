@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { VAULT_ROOT, notePath, todayStr } = require('./paths.js');
+const { VAULT_ROOT, notePath, todayStr, PROJECT_DIR } = require('./paths.js');
 const { extractSection, findSectionLineRange, insertAtEndOfSection, getTitle } = require('./markdown.js');
 const { atomicRewrite } = require('./atomic.js');
 
@@ -62,10 +62,15 @@ function inject(dateStr, scanResults, { quiet } = {}) {
   const grouped = groupByProject(scanResults);
   const lines = ['<!-- auto-generated from project files, do not edit -->'];
   for (const [projectSlug, items] of grouped) {
-    const title = items[0].projectTitle || projectSlug;
+    let title = projectSlug;
     if (projectSlug === '_unassigned') {
       lines.push(`- **Unassigned**`);
     } else {
+      const projectFile = path.join(PROJECT_DIR, `${projectSlug}.md`);
+      if (fs.existsSync(projectFile)) {
+        const content = fs.readFileSync(projectFile, 'utf-8');
+        title = getTitle(content) || projectSlug;
+      }
       lines.push(`- **[[projects/${projectSlug}#Tasks|${title}]]**`);
     }
     for (const item of items) {
