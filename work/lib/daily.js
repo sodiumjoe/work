@@ -66,9 +66,11 @@ function inject(dateStr, scanResults, { quiet } = {}) {
     if (projectSlug === '_unassigned') {
       lines.push(`- **Unassigned**`);
     } else {
-      lines.push(`- **[[projects/${projectSlug}|${title}]]**`);
+      lines.push(`- **[[projects/${projectSlug}#Tasks|${title}]]**`);
     }
     for (const item of items) {
+      // Skip empty placeholder items (used for evergreen projects with no tasks)
+      if (item.itemText === '') continue;
       const suffix = item.state === '/' ? ' (in progress)' : '';
       lines.push(`  - ${item.itemText}${suffix}`);
     }

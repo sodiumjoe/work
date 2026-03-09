@@ -33,6 +33,7 @@ function scanOpenItems() {
       const content = fs.readFileSync(filePath, 'utf-8');
       const fm = parseFrontmatter(content);
       if (fm.status !== 'active') continue;
+      const evergreen = fm.evergreen === 'true' || fm.evergreen === true;
       const tasks = extractSection(content, 'Tasks');
       const title = getTitle(content);
       const slug = f.replace('.md', '');
@@ -40,8 +41,12 @@ function scanOpenItems() {
         if (/^- \[[ /]\] /.test(line)) {
           const state = line.match(/^- \[(.)\]/)[1];
           const item = line.replace(/^- \[.\] /, '');
-          results.push({ filename: f, title, itemText: item, sourceType: 'project', state, projectSlug: slug });
+          results.push({ filename: f, title, itemText: item, sourceType: 'project', state, projectSlug: slug, evergreen });
         }
+      }
+      // For evergreen projects with no tasks, add a placeholder item so they show up in daily note
+      if (evergreen && tasks.length === 0) {
+        results.push({ filename: f, title, itemText: '', sourceType: 'project', state: ' ', projectSlug: slug, evergreen: true });
       }
     }
   }

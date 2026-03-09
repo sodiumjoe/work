@@ -229,6 +229,50 @@ const commands = {
     appendLog(dateStr, positional[0], opts['source-type'], opts['source-slug'], opts['source-title']);
   },
 
+  'append-task'() {
+    const { positional } = parseOpts(args.slice(1));
+    if (positional.length < 2) {
+      throw new Error('usage: work append-task <file> <description>');
+    }
+    const filePath = positional[0];
+    const description = positional[1];
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const updated = insertAtEndOfSection(content, 'Tasks', [`- [ ] ${description}`]);
+    fs.writeFileSync(filePath, updated, 'utf-8');
+  },
+
+  complete() {
+    const { opts, positional } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    if (positional.length < 2) {
+      throw new Error('usage: work complete <file> <description>');
+    }
+    const filePath = positional[0];
+    const description = positional[1];
+
+    // Check off the item in the source file
+    checkOff(filePath, description, dateStr);
+
+    // Determine source metadata from file path
+    let sourceType, sourceSlug, sourceTitle;
+    const content = fs.readFileSync(filePath, 'utf-8');
+    sourceTitle = getTitle(content);
+
+    if (filePath.includes('/projects/')) {
+      sourceType = 'project';
+      sourceSlug = path.basename(filePath, '.md');
+    } else if (filePath.includes('/plans/')) {
+      sourceType = 'plan';
+      sourceSlug = path.basename(filePath, '.md');
+    } else {
+      sourceType = 'unknown';
+      sourceSlug = path.basename(filePath, '.md');
+    }
+
+    // Append to daily log
+    appendLog(dateStr, description, sourceType, sourceSlug, sourceTitle);
+  },
+
   'parse-changelog'() {
     const { positional } = parseOpts(args.slice(1));
     if (positional.length < 2) {
