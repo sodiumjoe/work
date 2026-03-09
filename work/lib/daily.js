@@ -88,10 +88,14 @@ function inject(dateStr, scanResults, { quiet } = {}) {
 
 function groupByProject(results) {
   const groups = new Map();
+  const evergreenProjects = new Set();
   for (const r of results) {
     const key = r.projectSlug || '_unassigned';
     if (!groups.has(key)) {
       groups.set(key, []);
+    }
+    if (r.evergreen) {
+      evergreenProjects.add(key);
     }
     groups.get(key).push({
       itemText: r.itemText,
@@ -104,6 +108,10 @@ function groupByProject(results) {
   for (const [k, v] of [...groups.entries()].sort((a, b) => {
     if (a[0] === '_unassigned') return 1;
     if (b[0] === '_unassigned') return -1;
+    const aEvergreen = evergreenProjects.has(a[0]);
+    const bEvergreen = evergreenProjects.has(b[0]);
+    if (aEvergreen && !bEvergreen) return -1;
+    if (!aEvergreen && bEvergreen) return 1;
     return a[0].localeCompare(b[0]);
   })) {
     sorted.set(k, v);
