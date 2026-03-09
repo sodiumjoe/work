@@ -32,20 +32,22 @@ function scanOpenItems() {
       const filePath = path.join(PROJECT_DIR, f);
       const content = fs.readFileSync(filePath, 'utf-8');
       const fm = parseFrontmatter(content);
-      if (fm.status !== 'active') continue;
       const evergreen = fm.evergreen === 'true' || fm.evergreen === true;
+      if (fm.status !== 'active' && !evergreen) continue;
       const tasks = extractSection(content, 'Tasks');
       const title = getTitle(content);
       const slug = f.replace('.md', '');
+      let hasOpenTasks = false;
       for (const line of tasks) {
         if (/^- \[[ /]\] /.test(line)) {
           const state = line.match(/^- \[(.)\]/)[1];
           const item = line.replace(/^- \[.\] /, '');
           results.push({ filename: f, title, itemText: item, sourceType: 'project', state, projectSlug: slug, evergreen });
+          hasOpenTasks = true;
         }
       }
-      // For evergreen projects with no tasks, add a placeholder item so they show up in daily note
-      if (evergreen && tasks.length === 0) {
+      // For evergreen projects with no open tasks, add a placeholder item so they show up in daily note
+      if (evergreen && !hasOpenTasks) {
         results.push({ filename: f, title, itemText: '', sourceType: 'project', state: ' ', projectSlug: slug, evergreen: true });
       }
     }

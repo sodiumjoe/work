@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.1 — 2026-03-09
+
+- Fixed evergreen project filtering — projects with `evergreen: true` now included regardless of status
+- Fixed evergreen placeholder logic — uses `hasOpenTasks` instead of `tasks.length` to determine when to add placeholder
+
 ## 2.0.0 — 2026-03-05
 
 Rewrote from bash scripts to Node.js modules with a single `work` CLI.
