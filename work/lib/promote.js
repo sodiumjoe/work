@@ -4,7 +4,8 @@ const { extractSection, findSectionLineRange, parseFrontmatter } = require('./ma
 const { atomicRewrite } = require('./atomic.js');
 const { PROJECT_DIR } = require('./paths.js');
 
-function promote(dateStr) {
+function promote(dateStr, { quiet } = {}) {
+  const log = quiet ? () => {} : console.log.bind(console);
   if (!fs.existsSync(PROJECT_DIR)) return [];
   const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md');
   const promoted = [];
@@ -46,9 +47,9 @@ function promote(dateStr) {
     });
   }
   if (promoted.length > 0) {
-    console.log(`promoted ${promoted.length} task(s) to changelog`);
+    log(`promoted ${promoted.length} task(s) to changelog`);
     for (const p of promoted) {
-      console.log(`  ${p.file}: ${p.text}`);
+      log(`  ${p.file}: ${p.text}`);
     }
   }
   return promoted;

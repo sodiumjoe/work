@@ -4,17 +4,18 @@ const { VAULT_ROOT, notePath, todayStr } = require('./paths.js');
 const { extractSection, findSectionLineRange, insertAtEndOfSection, getTitle } = require('./markdown.js');
 const { atomicRewrite } = require('./atomic.js');
 
-function ensure(dateStr) {
+function ensure(dateStr, { quiet } = {}) {
+  const log = quiet ? () => {} : console.log.bind(console);
   const p = notePath(dateStr);
   if (!fs.existsSync(p)) {
     fs.writeFileSync(p, '## Tasks\n\n## Log\n');
-    console.log(`created ${p}`);
+    log(`created ${p}`);
     return;
   }
   const content = fs.readFileSync(p, 'utf-8');
   if (/^## Queue/m.test(content) && !/^## Tasks/m.test(content)) {
     atomicRewrite(p, c => c.replace(/^## Queue/m, '## Tasks'));
-    console.log(`migrated Queue → Tasks in ${p}`);
+    log(`migrated Queue → Tasks in ${p}`);
   }
   const current = fs.readFileSync(p, 'utf-8');
   const missing = [];
@@ -22,13 +23,14 @@ function ensure(dateStr) {
   if (!/^## Log/m.test(current)) missing.push('## Log\n');
   if (missing.length > 0) {
     fs.appendFileSync(p, '\n' + missing.join('\n'));
-    console.log(`added missing sections to ${p}: ${missing.map(s => s.trim()).join(', ')}`);
+    log(`added missing sections to ${p}: ${missing.map(s => s.trim()).join(', ')}`);
   } else {
-    console.log(`exists ${p}`);
+    log(`exists ${p}`);
   }
 }
 
-function logSyncEntries(dateStr, entries, dryRun) {
+function logSyncEntries(dateStr, entries, dryRun, { quiet } = {}) {
+  const log = quiet ? () => {} : console.log.bind(console);
   if (entries.length === 0) return;
   const formatted = entries.map(e => {
     const wikiPath = e.sourceType === 'project'
@@ -45,14 +47,15 @@ function logSyncEntries(dateStr, entries, dryRun) {
     throw new Error('no daily note found');
   }
   atomicRewrite(dailyNote, content => insertAtEndOfSection(content, 'Log', formatted));
-  console.log(`logged ${formatted.length} sync entry/entries`);
+  log(`logged ${formatted.length} sync entry/entries`);
 }
 
-function inject(dateStr, scanResults) {
+function inject(dateStr, scanResults, { quiet } = {}) {
+  const log = quiet ? () => {} : console.log.bind(console);
   const dailyNote = notePath(dateStr);
   if (!fs.existsSync(dailyNote)) return;
   if (!scanResults || scanResults.length === 0) {
-    console.log('no tasks to inject');
+    log('no tasks to inject');
     atomicRewrite(dailyNote, c => replaceTasksSection(c, []));
     return;
   }
@@ -61,19 +64,19 @@ function inject(dateStr, scanResults) {
   for (const [projectSlug, items] of grouped) {
     const title = items[0].projectTitle || projectSlug;
     if (projectSlug === '_unassigned') {
-      lines.push(`### Unassigned`);
+      lines.push(`- **Unassigned**`);
     } else {
-      lines.push(`### [[projects/${projectSlug}|${title}]]`);
+      lines.push(`- **[[projects/${projectSlug}|${title}]]**`);
     }
     for (const item of items) {
       const suffix = item.state === '/' ? ' (in progress)' : '';
-      lines.push(`- ${item.itemText}${suffix}`);
+      lines.push(`  - ${item.itemText}${suffix}`);
     }
-    lines.push('');
   }
+  lines.push('');
   atomicRewrite(dailyNote, c => replaceTasksSection(c, lines));
   const count = scanResults.length;
-  console.log(`injected ${count} task(s) into daily note`);
+  log(`injected ${count} task(s) into daily note`);
 }
 
 function groupByProject(results) {

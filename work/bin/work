@@ -32,21 +32,23 @@ function getDate(opts) {
   return opts.date || todayStr();
 }
 
-function doGather(dateStr) {
+function doGather(dateStr, quiet) {
+  const log = quiet ? () => {} : console.log.bind(console);
+  const q = { quiet };
   const errors = [];
-  console.log('--- ensure ---');
-  try { ensure(dateStr); } catch (e) { console.error('FAIL: ensure'); errors.push(`ensure: ${e.message}`); }
-  console.log('--- promote ---');
-  try { promote(dateStr); } catch (e) { console.error('FAIL: promote'); errors.push(`promote: ${e.message}`); }
-  console.log('--- scan ---');
+  log('--- ensure ---');
+  try { ensure(dateStr, q); } catch (e) { console.error('FAIL: ensure'); errors.push(`ensure: ${e.message}`); }
+  log('--- promote ---');
+  try { promote(dateStr, q); } catch (e) { console.error('FAIL: promote'); errors.push(`promote: ${e.message}`); }
+  log('--- scan ---');
   let scanResults = [];
   try {
     scanResults = scanOpenItems();
     const tsv = formatScanTSV(scanResults);
-    if (tsv) console.log(tsv);
+    if (tsv) log(tsv);
   } catch (e) { console.error('FAIL: scan'); errors.push(`scan: ${e.message}`); }
-  console.log('--- inject ---');
-  try { inject(dateStr, scanResults); } catch (e) { console.error('FAIL: inject'); errors.push(`inject: ${e.message}`); }
+  log('--- inject ---');
+  try { inject(dateStr, scanResults, q); } catch (e) { console.error('FAIL: inject'); errors.push(`inject: ${e.message}`); }
   if (errors.length) process.exitCode = 1;
   return errors;
 }
@@ -237,19 +239,21 @@ const commands = {
 
   tick() {
     const { opts } = parseOpts(args.slice(1));
+    const quiet = !opts.verbose;
+    const log = quiet ? () => {} : console.log.bind(console);
     const dateStr = getDate(opts);
     const errors = [];
 
-    console.log('=== gather ===');
-    errors.push(...doGather(dateStr));
+    log('=== gather ===');
+    errors.push(...doGather(dateStr, quiet));
 
-    console.log('=== sync --apply ===');
+    log('=== sync --apply ===');
     try {
       const entries = syncCheck(dateStr);
       if (entries.length > 0) {
-        logSyncEntries(dateStr, entries, false);
+        logSyncEntries(dateStr, entries, false, { quiet });
       } else {
-        console.log('nothing to sync');
+        log('nothing to sync');
       }
     } catch (e) {
       console.error('FAIL: sync');
@@ -262,10 +266,10 @@ const commands = {
       const note = fs.readFileSync(np, 'utf-8');
       const hasSummary = /^## Summary/m.test(note);
       if (hour >= 18 && !hasSummary) {
-        console.log('=== wrap ===');
+        log('=== wrap ===');
         doWrap(dateStr);
       } else {
-        console.log(`skip wrap (hour=${hour}, hasSummary=${hasSummary})`);
+        log(`skip wrap (hour=${hour}, hasSummary=${hasSummary})`);
       }
     }
 
@@ -275,7 +279,7 @@ const commands = {
       if (!content.includes('Investigate work tick errors')) {
         const { atomicRewrite } = require(path.join(LIB, 'atomic.js'));
         atomicRewrite(np, c => insertAtEndOfSection(c, 'Log', [`- [ ] ${errMsg}`]));
-        console.log('injected error item into log');
+        log('injected error item into log');
       }
     }
   },
