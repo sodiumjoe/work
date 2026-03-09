@@ -2,6 +2,35 @@
 
 Daily work tracking with Obsidian integration for Claude Code. Manages daily notes, project files, plan files, and work logging through slash commands backed by a Node.js CLI.
 
+## Usage
+
+### Starting work
+
+`<leader>ap` opens a picker showing all open tasks across projects and plans. Select one to start a scoped Claude Code session with the project file and task description injected as context. The tmux window label updates to the task name.
+
+`<leader>aP` creates a new project from scratch — prompts for a title, generates the project file, opens it in a buffer, and starts a session scoped to it.
+
+### During a session
+
+The session knows which project it belongs to. Use `EnterPlanMode` to plan implementation, then execute. When work is done:
+
+- Claude uses `work check-off <project-file> <description>` to mark changelog entries complete
+- Claude uses `work append-log <description> --source-type=project --source-slug=<slug> --source-title=<title>` to log completions to the daily note
+- `/note` to record freeform observations, links, or discoveries
+- `/name` to relabel the tmux window if the focus shifts
+
+### Adding tasks to a project
+
+Add `- [ ] Description` lines to the project's `## Changelog` section. They surface in the picker next time `<leader>ap` runs (or on the next hourly `work tick`).
+
+### Lifecycle
+
+Open changelog items keep a project visible in the queue. When all items are checked off, the nightly `work tick` marks the project `status: completed` automatically. No manual cleanup needed.
+
+### Devbox workflow
+
+The `dev` shell function connects the same task-picking flow to remote devboxes — pick a task, pick or create a devbox, and the plans/projects sync both ways over SSH.
+
 ## Architecture
 
 ```
@@ -252,6 +281,15 @@ dev
   6. tmux nest → SSH → tmux unnest
   7. Sync plans + projects back from devbox
 ```
+
+## Updating the plugin
+
+After making changes to the plugin source:
+
+1. Bump `version` in `work/.claude-plugin/plugin.json`
+2. Commit
+3. `claude plugin update work@personal`
+4. Restart Claude Code sessions
 
 ## Dependencies
 

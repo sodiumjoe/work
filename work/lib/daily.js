@@ -9,14 +9,22 @@ function ensure(dateStr) {
   if (!fs.existsSync(p)) {
     fs.writeFileSync(p, '## Tasks\n\n## Log\n');
     console.log(`created ${p}`);
+    return;
+  }
+  const content = fs.readFileSync(p, 'utf-8');
+  if (/^## Queue/m.test(content) && !/^## Tasks/m.test(content)) {
+    atomicRewrite(p, c => c.replace(/^## Queue/m, '## Tasks'));
+    console.log(`migrated Queue → Tasks in ${p}`);
+  }
+  const current = fs.readFileSync(p, 'utf-8');
+  const missing = [];
+  if (!/^## Tasks/m.test(current)) missing.push('## Tasks\n');
+  if (!/^## Log/m.test(current)) missing.push('## Log\n');
+  if (missing.length > 0) {
+    fs.appendFileSync(p, '\n' + missing.join('\n'));
+    console.log(`added missing sections to ${p}: ${missing.map(s => s.trim()).join(', ')}`);
   } else {
-    const content = fs.readFileSync(p, 'utf-8');
-    if (/^## Queue/m.test(content) && !/^## Tasks/m.test(content)) {
-      atomicRewrite(p, c => c.replace(/^## Queue/m, '## Tasks'));
-      console.log(`migrated Queue → Tasks in ${p}`);
-    } else {
-      console.log(`exists ${p}`);
-    }
+    console.log(`exists ${p}`);
   }
 }
 
