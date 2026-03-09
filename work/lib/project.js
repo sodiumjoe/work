@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { parseFrontmatter, extractSection, getTitle } = require('./markdown.js');
 const { PROJECT_DIR, VAULT_ROOT } = require('./paths.js');
+const { atomicRewrite } = require('./atomic.js');
 
 function createProject(slug, title) {
   if (!slug || /[\s/]/.test(slug)) {
@@ -21,6 +22,8 @@ status: active
 ## Links
 
 ## Plans
+
+## Tasks
 
 ## Changelog
 
@@ -65,8 +68,35 @@ function parseChangelog(filePath, pattern) {
   }
 }
 
+function completeProjects() {
+  if (!fs.existsSync(PROJECT_DIR)) return [];
+  const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md'));
+  const completed = [];
+  for (const file of files) {
+    const filePath = path.join(PROJECT_DIR, file);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const fm = parseFrontmatter(content);
+    if (fm.status === 'completed') continue;
+    if (fm.permanent === 'true' || fm.permanent === true) continue;
+    const tasks = extractSection(content, 'Tasks');
+    const openTasks = tasks.filter(l => /^- \[[ /]\]/.test(l));
+    if (openTasks.length > 0) continue;
+    const changelog = extractSection(content, 'Changelog');
+    const openChangelog = changelog.filter(l => /^- \[ \]/.test(l));
+    const done = changelog.filter(l => /^- \[x\]/.test(l));
+    if (done.length === 0) continue;
+    if (openChangelog.length > 0) continue;
+    atomicRewrite(filePath, c => c.replace(/^status:\s*active\s*$/m, 'status: completed'));
+    const title = getTitle(content) || file;
+    completed.push({ file, title });
+    console.log(`completed: ${title} (${file})`);
+  }
+  return completed;
+}
+
 module.exports = {
   createProject,
   resolveProject,
   parseChangelog,
+  completeProjects,
 };

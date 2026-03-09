@@ -10,25 +10,38 @@ function checkOff(filePath, description, dateStr) {
   let action;
   atomicRewrite(filePath, content => {
     const lines = content.split('\n');
-    const range = findSectionLineRange(lines, 'Changelog');
-    if (!range) {
-      throw new Error('no ## Changelog section found');
-    }
-    for (let i = range.start + 1; i < range.end; i++) {
-      if (/^- \[ \]/.test(lines[i])) {
-        const text = lines[i].replace(/^- \[ \] /, '');
-        if (text === description || text.includes(description)) {
-          lines[i] = `- [x] ${text} ✅ ${dateStr}`;
-          action = 'checked';
-          return lines.join('\n');
+    const tasksRange = findSectionLineRange(lines, 'Tasks');
+    if (tasksRange) {
+      for (let i = tasksRange.start + 1; i < tasksRange.end; i++) {
+        if (/^- \[[ /]\]/.test(lines[i])) {
+          const text = lines[i].replace(/^- \[.\] /, '');
+          if (text === description || text.includes(description)) {
+            lines[i] = `- [x] ${text}`;
+            action = 'checked';
+            return lines.join('\n');
+          }
         }
       }
     }
-    const insertAt = range.end;
-    const entry = `- [x] ${description} ✅ ${dateStr}`;
-    lines.splice(insertAt, 0, entry);
-    action = 'appended';
-    return lines.join('\n');
+    const changelogRange = findSectionLineRange(lines, 'Changelog');
+    if (changelogRange) {
+      for (let i = changelogRange.start + 1; i < changelogRange.end; i++) {
+        if (/^- \[ \]/.test(lines[i])) {
+          const text = lines[i].replace(/^- \[ \] /, '');
+          if (text === description || text.includes(description)) {
+            lines[i] = `- [x] ${text} ✅ ${dateStr}`;
+            action = 'checked';
+            return lines.join('\n');
+          }
+        }
+      }
+      const insertAt = changelogRange.end;
+      const entry = `- [x] ${description} ✅ ${dateStr}`;
+      lines.splice(insertAt, 0, entry);
+      action = 'appended';
+      return lines.join('\n');
+    }
+    throw new Error('no ## Tasks or ## Changelog section found');
   });
   console.log(`${action}: ${description}`);
   return action;

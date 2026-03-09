@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { extractSection, getTitle } = require('./markdown.js');
+const { extractSection, parseFrontmatter, getTitle } = require('./markdown.js');
 const { PLAN_DIR, PROJECT_DIR, notePath } = require('./paths.js');
 
 function scanOpenItems() {
@@ -10,12 +10,18 @@ function scanOpenItems() {
     for (const f of files) {
       const filePath = path.join(PLAN_DIR, f);
       const content = fs.readFileSync(filePath, 'utf-8');
+      const fm = parseFrontmatter(content);
       const changelog = extractSection(content, 'Changelog');
       const title = getTitle(content);
+      let projectSlug = null;
+      if (fm.project) {
+        projectSlug = fm.project.replace(/^\[\[/, '').replace(/\]\]$/, '').replace(/^projects\//, '');
+      }
       for (const line of changelog) {
-        if (/^- \[ \] /.test(line)) {
-          const item = line.replace(/^- \[ \] /, '');
-          results.push({ filename: f, title, itemText: item, sourceType: 'plan' });
+        if (/^- \[[ /]\] /.test(line)) {
+          const state = line.match(/^- \[(.)\]/)[1];
+          const item = line.replace(/^- \[.\] /, '');
+          results.push({ filename: f, title, itemText: item, sourceType: 'plan', state, projectSlug });
         }
       }
     }
@@ -25,12 +31,16 @@ function scanOpenItems() {
     for (const f of files) {
       const filePath = path.join(PROJECT_DIR, f);
       const content = fs.readFileSync(filePath, 'utf-8');
-      const changelog = extractSection(content, 'Changelog');
+      const fm = parseFrontmatter(content);
+      if (fm.status !== 'active') continue;
+      const tasks = extractSection(content, 'Tasks');
       const title = getTitle(content);
-      for (const line of changelog) {
-        if (/^- \[ \] /.test(line)) {
-          const item = line.replace(/^- \[ \] /, '');
-          results.push({ filename: f, title, itemText: item, sourceType: 'project' });
+      const slug = f.replace('.md', '');
+      for (const line of tasks) {
+        if (/^- \[[ /]\] /.test(line)) {
+          const state = line.match(/^- \[(.)\]/)[1];
+          const item = line.replace(/^- \[.\] /, '');
+          results.push({ filename: f, title, itemText: item, sourceType: 'project', state, projectSlug: slug });
         }
       }
     }
@@ -40,7 +50,7 @@ function scanOpenItems() {
 
 function formatScanTSV(results) {
   return results.map(r =>
-    `${r.filename}\t${r.title}\t${r.itemText}\t${r.sourceType}`
+    `${r.filename}\t${r.title}\t${r.itemText}\t${r.sourceType}\t${r.state}\t${r.projectSlug || ''}`
   ).join('\n');
 }
 

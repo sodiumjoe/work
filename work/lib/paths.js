@@ -12,8 +12,9 @@ function loadConfig() {
 }
 
 const config = loadConfig();
-const VAULT_ROOT = process.env.WORK_VAULT || config.vault || path.join(process.env.HOME, 'work');
-const PLAN_DIR = config.plans || path.join(process.env.HOME, '.claude', 'plans');
+const expandHome = (p) => p?.replace(/^~(?=$|\/)/, process.env.HOME);
+const VAULT_ROOT = process.env.WORK_VAULT || expandHome(config.vault) || path.join(process.env.HOME, 'work');
+const PLAN_DIR = expandHome(config.plans) || path.join(process.env.HOME, '.claude', 'plans');
 const PROJECT_DIR = path.join(VAULT_ROOT, 'projects');
 
 function notePath(dateStr) {
@@ -21,7 +22,8 @@ function notePath(dateStr) {
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 module.exports = { VAULT_ROOT, PLAN_DIR, PROJECT_DIR, notePath, todayStr };

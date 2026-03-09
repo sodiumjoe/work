@@ -3,13 +3,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const LIB = path.join(__dirname, '..', 'lib');
-const { ensure, carry, mark, logSyncEntries, inject, parseStatusArg } = require(path.join(LIB, 'daily.js'));
+const { ensure, logSyncEntries, inject } = require(path.join(LIB, 'daily.js'));
 const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
 const { scanOpenItems, formatScanTSV, syncCheck } = require(path.join(LIB, 'scan.js'));
-const { createProject, resolveProject, parseChangelog } = require(path.join(LIB, 'project.js'));
-const { extractSection, getTitle } = require(path.join(LIB, 'markdown.js'));
-const { stripWikilinkSuffix } = require(path.join(LIB, 'checkbox.js'));
+const { createProject, resolveProject, parseChangelog, completeProjects } = require(path.join(LIB, 'project.js'));
+const { extractSection, insertAtEndOfSection, getTitle } = require(path.join(LIB, 'markdown.js'));
 const { checkOff, appendLog } = require(path.join(LIB, 'changelog.js'));
+const { promote } = require(path.join(LIB, 'promote.js'));
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -32,9 +32,64 @@ function getDate(opts) {
   return opts.date || todayStr();
 }
 
-function readStdin() {
-  if (process.stdin.isTTY) return '';
-  return fs.readFileSync(0, 'utf-8');
+function doGather(dateStr) {
+  const errors = [];
+  console.log('--- ensure ---');
+  try { ensure(dateStr); } catch (e) { console.error('FAIL: ensure'); errors.push(`ensure: ${e.message}`); }
+  console.log('--- promote ---');
+  try { promote(dateStr); } catch (e) { console.error('FAIL: promote'); errors.push(`promote: ${e.message}`); }
+  console.log('--- scan ---');
+  let scanResults = [];
+  try {
+    scanResults = scanOpenItems();
+    const tsv = formatScanTSV(scanResults);
+    if (tsv) console.log(tsv);
+  } catch (e) { console.error('FAIL: scan'); errors.push(`scan: ${e.message}`); }
+  console.log('--- inject ---');
+  try { inject(dateStr, scanResults); } catch (e) { console.error('FAIL: inject'); errors.push(`inject: ${e.message}`); }
+  if (errors.length) process.exitCode = 1;
+  return errors;
+}
+
+function doWrap(dateStr) {
+  const { execFileSync } = require('node:child_process');
+
+  ensure(dateStr);
+
+  console.log('=== sync --apply ===');
+  const entries = syncCheck(dateStr);
+  if (entries.length > 0) {
+    logSyncEntries(dateStr, entries, false);
+  }
+
+  console.log('=== claude summary ===');
+  const np = notePath(dateStr);
+  const prompt = `Read the daily note at ${np}.
+
+For each wikilinked project or plan referenced in the Log and Tasks sections, read that file to understand what the work items actually are. Projects are in ${PROJECT_DIR}. Plans are in ${PLAN_DIR}.
+
+Then write a comprehensive summary into the ## Summary section of the daily note (replace existing content if the section exists, or append it at the end).
+
+The summary should cover:
+- What was accomplished today, with enough detail to be useful in retrospect
+- What moved forward but isn't finished
+- What's still open / blocked
+- Any patterns worth noting (e.g., most of the day on one project, context-switching)
+
+Write in a dry, factual tone. No enthusiasm. No filler. Complete sentences.
+Use the Edit tool to write the summary into the daily note.`;
+
+  try {
+    execFileSync('claude', ['-p', prompt], {
+      stdio: ['pipe', 'inherit', 'inherit'],
+      timeout: 120000,
+    });
+  } catch (e) {
+    console.error('claude summary failed:', e.message);
+  }
+
+  console.log('=== complete projects ===');
+  completeProjects();
 }
 
 const commands = {
@@ -43,9 +98,9 @@ const commands = {
     ensure(getDate(opts));
   },
 
-  carry() {
+  promote() {
     const { opts } = parseOpts(args.slice(1));
-    carry(getDate(opts));
+    promote(getDate(opts));
   },
 
   sync() {
@@ -62,7 +117,6 @@ const commands = {
   },
 
   scan() {
-    const { opts } = parseOpts(args.slice(1));
     const results = scanOpenItems();
     const tsv = formatScanTSV(results);
     if (tsv) process.stdout.write(tsv + '\n');
@@ -71,12 +125,8 @@ const commands = {
   inject() {
     const { opts } = parseOpts(args.slice(1));
     const dateStr = getDate(opts);
-    let input = readStdin();
-    if (!input.trim()) {
-      const results = scanOpenItems();
-      input = formatScanTSV(results);
-    }
-    inject(dateStr, input);
+    const results = scanOpenItems();
+    inject(dateStr, results);
   },
 
   gather() {
@@ -84,11 +134,11 @@ const commands = {
     const dateStr = getDate(opts);
     let failed = 0;
 
-    console.log('=== ensure-daily-note ===');
+    console.log('=== ensure ===');
     try { ensure(dateStr); } catch (e) { console.error('FAIL: ensure'); failed = 1; }
 
-    console.log('=== carry-forward-queue ===');
-    try { carry(dateStr); } catch (e) { console.error('FAIL: carry'); failed = 1; }
+    console.log('=== promote ===');
+    try { promote(dateStr); } catch (e) { console.error('FAIL: promote'); failed = 1; }
 
     console.log('=== sync-check ===');
     try {
@@ -98,27 +148,18 @@ const commands = {
       }
     } catch (e) { console.error('FAIL: sync-check'); failed = 1; }
 
-    console.log('=== scan-open-items ===');
-    let scanOutput = '';
+    console.log('=== scan ===');
+    let scanResults = [];
     try {
-      const results = scanOpenItems();
-      scanOutput = formatScanTSV(results);
-      if (scanOutput) console.log(scanOutput);
-    } catch (e) { console.error('FAIL: scan-open-items'); failed = 1; }
+      scanResults = scanOpenItems();
+      const tsv = formatScanTSV(scanResults);
+      if (tsv) console.log(tsv);
+    } catch (e) { console.error('FAIL: scan'); failed = 1; }
 
-    console.log('=== inject-plan-items ===');
-    try { inject(dateStr, scanOutput); } catch (e) { console.error('FAIL: inject'); failed = 1; }
+    console.log('=== inject ===');
+    try { inject(dateStr, scanResults); } catch (e) { console.error('FAIL: inject'); failed = 1; }
 
     process.exit(failed);
-  },
-
-  mark() {
-    const { opts, positional } = parseOpts(args.slice(1));
-    const dateStr = getDate(opts);
-    if (positional.length < 2) {
-      throw new Error('usage: work mark <substring> <status>');
-    }
-    mark(dateStr, positional[0], positional[1]);
   },
 
   summary() {
@@ -130,48 +171,8 @@ const commands = {
     }
     const content = fs.readFileSync(dailyNote, 'utf-8');
     const logLines = extractSection(content, 'Log');
-    const queueLines = extractSection(content, 'Queue');
-
     const completed = logLines.filter(l => /^- \[x\]/.test(l));
-    const openQueue = queueLines.filter(l => /^- \[ \]/.test(l));
-
     const results = scanOpenItems();
-    const scanOutput = formatScanTSV(results);
-
-    const carried = [];
-    if (scanOutput && scanOutput.trim()) {
-      for (const row of scanOutput.trim().split('\n')) {
-        const [base, title, item, sourceType] = row.split('\t');
-        if (!item) continue;
-        let found = false;
-        for (const q of openQueue) {
-          const qText = stripWikilinkSuffix(q.replace(/^- \[ \] /, ''));
-          if (qText === item) { found = true; break; }
-        }
-        if (!found) {
-          const wikiPath = sourceType === 'project'
-            ? `projects/${base.replace('.md', '')}`
-            : `plans/${base.replace('.md', '')}`;
-          carried.push(`- [ ] ${item} — [[${wikiPath}|${title}]]`);
-        }
-      }
-    }
-
-    const stale = [];
-    if (scanOutput && scanOutput.trim()) {
-      for (const row of scanOutput.trim().split('\n')) {
-        const [base, title, , sourceType] = row.split('\t');
-        if (!base) continue;
-        const srcFile = sourceType === 'project'
-          ? path.join(PROJECT_DIR, base)
-          : path.join(PLAN_DIR, base);
-        if (fs.existsSync(srcFile)) {
-          const mtime = fs.statSync(srcFile).mtimeMs;
-          const age = Math.floor((Date.now() - mtime) / 86400000);
-          if (age > 7) stale.push(`${title} (${age}d)`);
-        }
-      }
-    }
 
     console.log('### Completed');
     if (completed.length === 0) {
@@ -181,16 +182,14 @@ const commands = {
     }
     console.log('');
     console.log('### Open');
-    if (openQueue.length === 0 && carried.length === 0) {
+    if (results.length === 0) {
       console.log('(none)');
     } else {
-      for (const item of openQueue) console.log(item);
-      for (const item of carried) console.log(item);
-    }
-    if (stale.length > 0) {
-      console.log('');
-      console.log('### Stale (>7d)');
-      for (const s of stale) console.log(`- ${s}`);
+      for (const r of results) {
+        const prefix = r.state === '/' ? '[/] ' : '';
+        const proj = r.projectSlug ? ` (${r.projectSlug})` : '';
+        console.log(`- ${prefix}${r.itemText}${proj}`);
+      }
     }
   },
 
@@ -208,27 +207,6 @@ const commands = {
       throw new Error('usage: work resolve-project <plan-file>');
     }
     resolveProject(positional[0]);
-  },
-
-  queue() {
-    const { opts } = parseOpts(args.slice(1));
-    const dateStr = getDate(opts);
-    const np = notePath(dateStr);
-    if (!fs.existsSync(np)) {
-      throw new Error('no daily note found');
-    }
-    const content = fs.readFileSync(np, 'utf-8');
-    const queueLines = extractSection(content, 'Queue');
-    const { parseCheckboxItems } = require(path.join(LIB, 'checkbox.js'));
-    const items = parseCheckboxItems(queueLines);
-    for (const item of items) {
-      if (item.state === 'x') continue;
-      let projSlug = '';
-      if (item.wikilink && item.wikilink.startsWith('projects/')) {
-        projSlug = item.wikilink.replace(/^projects\//, '').replace(/\|.*$/, '');
-      }
-      console.log(`${item.state}\t${item.text}\t${projSlug}`);
-    }
   },
 
   'check-off'() {
@@ -257,6 +235,56 @@ const commands = {
     parseChangelog(positional[0], positional[1]);
   },
 
+  tick() {
+    const { opts } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    const errors = [];
+
+    console.log('=== gather ===');
+    errors.push(...doGather(dateStr));
+
+    console.log('=== sync --apply ===');
+    try {
+      const entries = syncCheck(dateStr);
+      if (entries.length > 0) {
+        logSyncEntries(dateStr, entries, false);
+      } else {
+        console.log('nothing to sync');
+      }
+    } catch (e) {
+      console.error('FAIL: sync');
+      errors.push(`sync: ${e.message}`);
+    }
+
+    const hour = new Date().getHours();
+    const np = notePath(dateStr);
+    if (fs.existsSync(np)) {
+      const note = fs.readFileSync(np, 'utf-8');
+      const hasSummary = /^## Summary/m.test(note);
+      if (hour >= 18 && !hasSummary) {
+        console.log('=== wrap ===');
+        doWrap(dateStr);
+      } else {
+        console.log(`skip wrap (hour=${hour}, hasSummary=${hasSummary})`);
+      }
+    }
+
+    if (errors.length > 0 && fs.existsSync(np)) {
+      const errMsg = `Investigate work tick errors: ${errors.join('; ')} (check /tmp/work-tick.log)`;
+      const content = fs.readFileSync(np, 'utf-8');
+      if (!content.includes('Investigate work tick errors')) {
+        const { atomicRewrite } = require(path.join(LIB, 'atomic.js'));
+        atomicRewrite(np, c => insertAtEndOfSection(c, 'Log', [`- [ ] ${errMsg}`]));
+        console.log('injected error item into log');
+      }
+    }
+  },
+
+  wrap() {
+    const { opts } = parseOpts(args.slice(1));
+    doWrap(getDate(opts));
+  },
+
   paths() {
     const { positional } = parseOpts(args.slice(1));
     const key = positional[0];
@@ -275,15 +303,15 @@ Usage: work <command> [options]
 
 Commands:
   ensure                       Create today's daily note if missing
-  carry                        Carry forward open queue items from previous day
+  promote                      Move checked-off tasks to changelog
   sync [--apply]               Find unlogged changelog completions
-  scan                         Scan plans/projects for open changelog items (TSV)
-  inject                       Add scanned items to queue (reads stdin or runs scan)
-  gather                       Run ensure + carry + sync + scan + inject
-  mark <substr> <status>       Toggle a queue item's checkbox
-  queue                        List open/in-progress queue items (TSV)
-  summary                      Generate end-of-day summary
-  check-off <file> <desc>      Check off or append a changelog entry
+  scan                         Scan projects/plans for open tasks (TSV)
+  inject                       Rebuild daily note tasks view from scan
+  gather                       Run ensure + promote + sync + scan + inject
+  tick                         Hourly maintenance: gather + sync + conditional wrap
+  wrap                         End-of-day: sync + Claude summary + complete projects
+  summary                      Show completed and open items
+  check-off <file> <desc>      Check off a task or append a changelog entry
   append-log <desc>            Append entry to daily note log section
   create-project <slug> <title> Create a new project file
   resolve-project <plan-file>  Find project file from plan frontmatter

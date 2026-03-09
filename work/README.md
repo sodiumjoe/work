@@ -5,7 +5,12 @@ Daily work tracking with Obsidian integration for Claude Code. Manages daily not
 ## Architecture
 
 ```
-User ──> /command ──> command prompt (commands/*.md)
+launchd (hourly) ──> work tick ──> gather + sync + conditional wrap
+                                       │
+User ──> /command ──> command prompt    │
+              │       (commands/*.md)   │
+              │           │             │
+              └───────────┼─────────────┘
                           │
                           ├── calls `work` CLI (bin/work)
                           ├── reads/writes daily note
@@ -13,7 +18,7 @@ User ──> /command ──> command prompt (commands/*.md)
                           └── reads/writes plan files
 ```
 
-Commands are markdown prompt templates that Claude Code executes. Each command declares its allowed tools in YAML frontmatter. The `work` CLI handles deterministic operations (file parsing, section insertion, deduplication). The LLM handles judgment calls (user interaction, plan context summarization, duplicate detection).
+The `work` CLI handles deterministic operations (file parsing, section insertion, deduplication). The LLM handles judgment calls (user interaction, plan context summarization, end-of-day summary). A launchd timer runs `work tick` hourly to keep the daily note queue current and trigger end-of-day wrap automatically.
 
 ### Module layout
 
@@ -22,43 +27,45 @@ bin/work          CLI entrypoint
 lib/paths.js      Path constants (VAULT_ROOT, PLAN_DIR, PROJECT_DIR)
 lib/daily.js      Daily note operations (ensure, carry, mark, inject)
 lib/scan.js       Plan/project scanning (scanOpenItems, syncCheck)
-lib/project.js    Project file operations (createProject, resolveProject)
+lib/project.js    Project file operations (createProject, resolveProject, completeProjects)
 lib/changelog.js  Changelog mutations (checkOff, appendLog)
 lib/markdown.js   Markdown parsing (extractSection, parseFrontmatter)
 lib/checkbox.js   Checkbox parsing and state management
 lib/atomic.js     Atomic file rewrite (read-transform-rename)
 ```
 
-### Data flow: typical day
+### Data flow
 
 ```
-/start-day
-  work gather ──> ensure (create daily note)
-                ├─> carry   (yesterday's open items → today's queue)
-                ├─> sync    (plan/project completions not in daily note)
-                ├─> scan    (unchecked changelog items across plans + projects)
-                └─> inject  (open items → today's queue)
-  work sync --apply         (log unlogged completions)
+work tick (hourly via launchd)
+├── gather ──> ensure + carry + scan + inject
+├── sync --apply (flush unlogged completions)
+└── if hour >= 18 AND no ## Summary:
+    └── wrap
+        ├── sync --apply
+        ├── claude -p (LLM writes comprehensive summary)
+        └── completeProjects (mark fully done projects as completed)
 
-/next
-  work gather (same as above)
-  work sync --apply
-  work queue                (TSV of open items for selection)
-  work mark <item> '[/]'   (set in progress)
-  → create-project + EnterPlanMode (new) or resume context (existing)
-
-/log
-  work ensure
-  work sync --apply
-  work check-off <file> <description>   (update project/plan changelog)
-  work mark <item> '[x]'               (mark queue item complete)
-  work append-log <description> --source-type=... --source-slug=... --source-title=...
-
-/end-day
-  work gather
-  work sync --apply
-  work summary              (compile end-of-day summary)
+/next (interactive)
+├── work gather + sync --apply
+├── work queue (TSV of open items)
+├── work mark <item> '[/]' (set in progress)
+└── create-project + EnterPlanMode (new) or resume context (existing)
 ```
+
+### Automation: work tick
+
+A launchd plist (`~/.dotfiles/launchd/com.moon.work-tick.plist`) runs `work tick` at the top of every hour. `tick` does:
+
+1. **gather** — ensure daily note exists, carry forward yesterday's open items, scan all plans/projects for open changelog items, inject them into the queue
+2. **sync --apply** — find changelog entries completed today that aren't in the daily note's Log section, and add them
+3. **wrap** (after 18:00, once per day) — sync again, spawn `claude -p` to write a comprehensive LLM summary into the daily note's `## Summary` section, then mark fully completed projects as `status: completed`
+
+If any step fails, `tick` injects a queue item (`Investigate work tick errors: ...`) so the error surfaces in `/next`.
+
+### Project lifecycle
+
+Active projects with no open changelog items get a synthetic `Review project: <title>` entry injected into the queue, ensuring every active project stays visible. When all changelog items in a project are checked off, `completeProjects` (called by `wrap`) flips the project status from `active` to `completed`.
 
 ## CLI
 
@@ -72,9 +79,11 @@ Commands:
   scan                         Scan plans/projects for open changelog items (TSV)
   inject                       Add scanned items to queue (reads stdin or runs scan)
   gather                       Run ensure + carry + sync + scan + inject
+  tick                         Hourly maintenance: gather + sync + conditional wrap
+  wrap                         End-of-day: sync + Claude summary + complete projects
   mark <substr> <status>       Toggle a queue item's checkbox
   queue                        List open/in-progress queue items (TSV)
-  summary                      Generate end-of-day summary
+  summary                      Generate end-of-day summary (deterministic, stdout)
   check-off <file> <desc>      Check off or append a changelog entry
   append-log <desc>            Append entry to daily note log section
   create-project <slug> <title> Create a new project file
@@ -90,15 +99,22 @@ Options:
   --source-title=<title>       Source title for append-log wikilink
 ```
 
+## Vim workflows
+
+Task picking and project creation happen through Neovim keybinds (defined in `~/.dotfiles/neovim/lua/sodium/plugins/agentic.lua`):
+
+| Keybind | Description |
+|---------|-------------|
+| `<leader>ap` | Pick a task from the work queue, start an agentic session with project context |
+| `<leader>aP` | Create a new project (prompts for title), open project file, start agentic session |
+
+Both workflows destroy the existing agentic session, set `CLAUDE_PROJECT` and `CLAUDE_TASK` env vars, and start a fresh session. The `session-project` hook injects the project file contents as context.
+
 ## Slash commands
 
 | Command | Description |
 |---------|-------------|
-| `/start-day` | Initialize daily note, carry forward open items, review work |
-| `/next` | Review open work, pick a task, start or resume it |
-| `/log` | Log completed work to daily note and plan/project changelog |
 | `/note` | Append a note, link, or discovery to today's daily note |
-| `/end-day` | Summarize progress and open items |
 | `/name` | Set a descriptive label on the current tmux window |
 | `/archive-plans` | Archive completed plans and write a monthly summary |
 
@@ -128,12 +144,7 @@ Path: `$WORK_VAULT/YYYY-MM-DD.md` (default: `~/work/YYYY-MM-DD.md`)
 - HH:MM — Freeform note
 
 ## Summary
-### Completed
-- [x] ...
-### Open
-- [ ] ...
-### Stale (>7d)
-- Title (Nd)
+(LLM-written comprehensive summary of the day's work)
 ```
 
 ### Project file format
@@ -224,6 +235,8 @@ All fields are optional. The `WORK_VAULT` environment variable takes precedence 
 | `~/.claude/plans/` | Active plan files (symlinked into vault at `$WORK_VAULT/plans/`) |
 | `$WORK_VAULT/archive/` | Archived plans |
 | `$WORK_VAULT/monthly/YYYY-MM.md` | Monthly work summaries |
+| `~/.dotfiles/launchd/com.moon.work-tick.plist` | Hourly launchd timer |
+| `/tmp/work-tick.log` | Tick stdout/stderr (clears on reboot) |
 
 ## Devbox integration
 
@@ -243,5 +256,6 @@ dev
 ## Dependencies
 
 - Node.js >= 18
+- Claude Code CLI (`claude`) for LLM summary in `wrap`
 - fzf (dev function only)
 - nvim-remote (`scripts/nvim-remote/`) for editor integration (silently skipped if unavailable)
