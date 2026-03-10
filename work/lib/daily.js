@@ -91,7 +91,6 @@ function inject(dateStr, scanResults, { quiet } = {}) {
       lines.push(`  - ${item.itemText}${suffix}`);
     }
   }
-  lines.push('');
   atomicRewrite(dailyNote, c => replaceTasksSection(c, lines));
   const count = scanResults.length;
   log(`injected ${count} task(s) into daily note`);
@@ -136,7 +135,8 @@ function replaceTasksSection(content, newLines) {
   if (!range) return content;
   const before = lines.slice(0, range.start + 1);
   const after = lines.slice(range.end);
-  const result = [...before, ...newLines, ...after];
+  const separator = after.length > 0 && /^## /.test(after[0]) ? [''] : [];
+  const result = [...before, ...newLines, ...separator, ...after];
   return result.join('\n');
 }
 

@@ -1,5 +1,5 @@
 const fs = require('node:fs');
-const { extractSection, findSectionLineRange } = require('./markdown.js');
+const { extractSection, findSectionLineRange, insertAtEndOfSection } = require('./markdown.js');
 const { atomicRewrite } = require('./atomic.js');
 const { notePath } = require('./paths.js');
 
@@ -23,7 +23,13 @@ function checkOff(filePath, description, dateStr) {
         }
       }
     }
-    const changelogRange = findSectionLineRange(lines, 'Changelog');
+    let changelogRange = findSectionLineRange(lines, 'Changelog');
+    if (!changelogRange) {
+      const lastNonEmptyIdx = lines.findLastIndex(l => l.trim() !== '');
+      const insertAt = lastNonEmptyIdx >= 0 ? lastNonEmptyIdx + 1 : lines.length;
+      lines.splice(insertAt, 0, '', '## Changelog', '');
+      changelogRange = findSectionLineRange(lines, 'Changelog');
+    }
     if (changelogRange) {
       for (let i = changelogRange.start + 1; i < changelogRange.end; i++) {
         if (/^- \[ \]/.test(lines[i])) {
@@ -41,7 +47,7 @@ function checkOff(filePath, description, dateStr) {
       action = 'appended';
       return lines.join('\n');
     }
-    throw new Error('no ## Tasks or ## Changelog section found');
+    throw new Error('unexpected: Changelog section should exist after creation');
   });
   console.log(`${action}: ${description}`);
   return action;
@@ -61,13 +67,10 @@ function appendLog(dateStr, description, sourceType, sourceSlug, sourceTitle) {
   }
   const entry = `- [x] ${description} ✅ ${dateStr}${wikiSuffix}`;
   atomicRewrite(dailyNote, content => {
-    const lines = content.split('\n');
-    const range = findSectionLineRange(lines, 'Log');
-    if (!range) {
+    if (!findSectionLineRange(content.split('\n'), 'Log')) {
       throw new Error('no ## Log section found');
     }
-    lines.splice(range.end, 0, entry);
-    return lines.join('\n');
+    return insertAtEndOfSection(content, 'Log', [entry]);
   });
   console.log(entry);
 }

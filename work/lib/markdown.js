@@ -54,10 +54,17 @@ function insertAtEndOfSection(content, sectionName, newLines) {
   const lines = content.split('\n');
   const range = findSectionLineRange(lines, sectionName);
   if (!range) return content;
-  const insertAt = range.end;
+  let insertAt = range.end;
+  while (insertAt > range.start + 1 && lines[insertAt - 1].trim() === '') {
+    insertAt--;
+  }
   const before = lines.slice(0, insertAt);
-  const after = lines.slice(insertAt);
-  return [...before, ...newLines, ...after].join('\n');
+  let after = lines.slice(insertAt);
+  while (after.length > 0 && after[0].trim() === '') {
+    after.shift();
+  }
+  const separator = after.length > 0 ? [''] : [];
+  return [...before, ...newLines, ...separator, ...after].join('\n');
 }
 
 function parseFrontmatter(content) {

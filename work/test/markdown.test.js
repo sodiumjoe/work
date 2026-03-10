@@ -59,10 +59,28 @@ describe('insertBeforeNextSection', () => {
 });
 
 describe('insertAtEndOfSection', () => {
-  it('inserts at end of section', () => {
+  it('inserts at end of section with blank before next heading', () => {
     const content = '## Log\n- a\n## Queue\n- b';
     const result = insertAtEndOfSection(content, 'Log', ['- c']);
-    assert.equal(result, '## Log\n- a\n- c\n## Queue\n- b');
+    assert.equal(result, '## Log\n- a\n- c\n\n## Queue\n- b');
+  });
+
+  it('collapses existing blank lines before next heading', () => {
+    const content = '## Log\n- a\n\n\n## Queue\n- b';
+    const result = insertAtEndOfSection(content, 'Log', ['- c']);
+    assert.equal(result, '## Log\n- a\n- c\n\n## Queue\n- b');
+  });
+
+  it('does not add trailing blank when section is last', () => {
+    const content = '## Log\n- a';
+    const result = insertAtEndOfSection(content, 'Log', ['- c']);
+    assert.equal(result, '## Log\n- a\n- c');
+  });
+
+  it('inserts into empty section', () => {
+    const content = '## Log\n\n## Queue\n- b';
+    const result = insertAtEndOfSection(content, 'Log', ['- c']);
+    assert.equal(result, '## Log\n- c\n\n## Queue\n- b');
   });
 });
 
