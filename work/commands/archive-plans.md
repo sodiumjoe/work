@@ -1,11 +1,11 @@
 ---
-description: Archive completed plans and write a monthly work summary
+description: Archive completed plans and projects, write a monthly work summary
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash(date:*), Bash(mkdir:*), Bash(mv:*), Bash(ls:*), Bash(rm:*), Bash(cp:*), Bash(work:*)
 ---
 
-# Archive Plans
+# Archive Plans & Projects
 
-Archive completed plan files and generate a monthly work summary.
+Archive completed plan files and projects, then generate a monthly work summary.
 
 ## Steps
 
@@ -26,6 +26,23 @@ For each file:
 - Extract the `## Changelog` section (if present)
 - Collect all completed entries matching `- [x] ... ✅ YYYY-MM-DD` where the date starts with the current `YYYY-MM`
 - Check for any unchecked entries (`- [ ]`) in the changelog
+
+### 2b. Scan completed projects
+
+Read every `*.md` file in `$(work paths projects)` (excluding `_template.md`).
+
+For each file, parse the frontmatter. Collect projects where:
+- `status: completed`
+- NOT `evergreen: true`
+
+For each, record the slug, title, `completed_at` date, and count of associated plans found in step 2.
+
+Present the list to the user and ask which to archive. For confirmed projects, run:
+```bash
+work archive-project '<slug>'
+```
+
+This moves the project file to `archive/projects/` and all associated plans to `archive/`. Plans archived this way should be removed from the step 2 results so they aren't double-processed.
 
 ### 3. Classify plans
 
@@ -135,7 +152,8 @@ The archive directory lives in the Obsidian vault but is NOT under the `~/.claud
 ### 10. Report
 
 Tell the user:
-- How many projects were created
+- How many projects were archived (from step 2b)
+- How many projects were created (from step 4)
 - How many plans were archived
 - How many plans were deleted
 - How many duplicate groups were merged

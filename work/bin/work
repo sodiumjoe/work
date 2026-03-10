@@ -6,8 +6,9 @@ const LIB = path.join(__dirname, '..', 'lib');
 const { ensure, logSyncEntries, inject } = require(path.join(LIB, 'daily.js'));
 const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
 const { scanOpenItems, formatScanTSV, syncCheck } = require(path.join(LIB, 'scan.js'));
-const { createProject, resolveProject, parseChangelog, completeProjects } = require(path.join(LIB, 'project.js'));
-const { extractSection, insertAtEndOfSection, getTitle } = require(path.join(LIB, 'markdown.js'));
+const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject } = require(path.join(LIB, 'project.js'));
+const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
+const { extractSection, insertAtEndOfSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
 const { checkOff, appendLog } = require(path.join(LIB, 'changelog.js'));
 const { promote } = require(path.join(LIB, 'promote.js'));
 
@@ -82,7 +83,8 @@ Write in a dry, factual tone. No enthusiasm. No filler. Complete sentences.
 Use the Edit tool to write the summary into the daily note.`;
 
   try {
-    execFileSync('claude', ['-p', prompt], {
+    const claudeCmd = process.env.WORK_CLAUDE_CMD || 'claude';
+    execFileSync(claudeCmd, ['-p', prompt], {
       stdio: ['pipe', 'inherit', 'inherit'],
       timeout: 120000,
     });
@@ -186,6 +188,14 @@ const commands = {
     createProject(positional[0], positional[1]);
   },
 
+  'archive-project'() {
+    const { positional } = parseOpts(args.slice(1));
+    if (positional.length < 1) {
+      throw new Error('usage: work archive-project <slug>');
+    }
+    archiveProject(positional[0]);
+  },
+
   'resolve-project'() {
     const { positional } = parseOpts(args.slice(1));
     if (positional.length < 1) {
@@ -287,7 +297,53 @@ const commands = {
       errors.push(`sync: ${e.message}`);
     }
 
-    const hour = new Date().getHours();
+    log('=== archive queue ===');
+    try {
+      const approved = dequeue(dateStr, 'Archive');
+      for (const item of approved) {
+        const slug = item.key.replace(/^projects\//, '');
+        archiveProject(slug);
+        log(`archived: ${slug}`);
+      }
+      if (approved.length === 0) log('nothing to archive');
+    } catch (e) {
+      console.error('FAIL: archive dequeue');
+      errors.push(`archive-dequeue: ${e.message}`);
+    }
+
+    const now = new Date();
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const tickDate = new Date(y, m - 1, d);
+    if (tickDate.getDay() === 0) {
+      log('=== propose archivable ===');
+      try {
+        const projFiles = fs.existsSync(PROJECT_DIR)
+          ? fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md')
+          : [];
+        const items = [];
+        for (const f of projFiles) {
+          const content = fs.readFileSync(path.join(PROJECT_DIR, f), 'utf-8');
+          const fm = parseFrontmatter(content);
+          if (fm.status !== 'completed') continue;
+          if (fm.evergreen === 'true' || fm.evergreen === true) continue;
+          const slug = f.replace('.md', '');
+          const title = getTitle(content) || slug;
+          const completedAt = fm.completed_at || 'unknown';
+          items.push({ key: `projects/${slug}`, label: `[[projects/${slug}|${title}]] — completed ${completedAt}` });
+        }
+        if (items.length > 0) {
+          const count = enqueue(dateStr, 'Archive', items);
+          log(`proposed ${count || 0} project(s) for archive`);
+        } else {
+          log('no completed projects to propose');
+        }
+      } catch (e) {
+        console.error('FAIL: archive propose');
+        errors.push(`archive-propose: ${e.message}`);
+      }
+    }
+
+    const hour = process.env.WORK_TEST_HOUR != null ? parseInt(process.env.WORK_TEST_HOUR) : now.getHours();
     const np = notePath(dateStr);
     if (fs.existsSync(np)) {
       const note = fs.readFileSync(np, 'utf-8');
@@ -344,6 +400,7 @@ Commands:
   summary                      Show completed and open items
   complete <file> <desc>       Check off task and log to daily note
   create-project <slug> <title> Create a new project file
+  archive-project <slug>       Archive project and associated plans
   resolve-project <plan-file>  Find project file from plan frontmatter
   paths [vault|plans|projects]  Print configured paths
   parse-changelog <file> <pat> Extract matching changelog lines (TSV)

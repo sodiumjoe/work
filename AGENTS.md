@@ -195,6 +195,40 @@ Users type `/command-name` or Claude calls `Skill` tool with `skill: "work:comma
 
 Place command files in `work/commands/`. The plugin loader discovers them automatically.
 
+## Testing
+
+Run all tests:
+
+```bash
+node --test work/test/*.test.js
+```
+
+All tests must pass before committing changes to `work/lib/` or `work/bin/`.
+
+Test files live in `work/test/`. Each library file has a corresponding test file:
+
+| Library | Test file |
+|---------|-----------|
+| `atomic.js` | `atomic.test.js` |
+| `changelog.js` | `changelog.test.js` |
+| `daily.js` | `daily.test.js` |
+| `markdown.js` | `markdown.test.js` |
+| `project.js` | `project.test.js` |
+| `promote.js` | `promote.test.js` |
+| `queue.js` | `queue.test.js` |
+| `scan.js` | `scan.test.js` |
+
+Integration tests for CLI commands and multi-module flows:
+
+| Test file | Coverage |
+|-----------|----------|
+| `archive-flow.test.js` | archive-project, tick archive queue, wrap, Sunday proposals |
+| `cli.test.js` | create-project, complete, append-task, paths, summary, help |
+
+**Test isolation:** Tests use temporary directories and `requireFresh()` to clear the module cache between tests. Environment variables (`WORK_VAULT`, `XDG_CONFIG_HOME`) are saved and restored in `beforeEach`/`afterEach`.
+
+**Env var overrides for testing:** `WORK_TEST_HOUR` overrides the system clock hour in tick's wrap gate. `WORK_CLAUDE_CMD` overrides the `claude` binary in `doWrap`. Set these in subprocess tests to control time-dependent behavior and avoid calling external binaries.
+
 ## Maintenance
 
 When adding or modifying agents or commands, update this file with:
@@ -204,3 +238,11 @@ When adding or modifying agents or commands, update this file with:
 - Brief description of purpose and constraints
 
 Keep the Overview section synchronized with the set of available primitives.
+
+## Committing Changes
+
+After modifying any plugin source (`work/lib/`, `work/bin/`, `work/commands/`, `work/agents/`, `work/hooks/`):
+
+1. Run all tests: `node --test work/test/*.test.js`
+2. Bump `version` in `work/.claude-plugin/plugin.json` (patch for fixes, minor for new features)
+3. Commit all changed files together

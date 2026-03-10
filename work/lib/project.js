@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseFrontmatter, extractSection, getTitle } = require('./markdown.js');
-const { PROJECT_DIR, VAULT_ROOT } = require('./paths.js');
+const { PROJECT_DIR, VAULT_ROOT, PLAN_DIR, todayStr } = require('./paths.js');
 const { atomicRewrite } = require('./atomic.js');
 
 function createProject(slug, title) {
@@ -86,7 +86,13 @@ function completeProjects() {
     const done = changelog.filter(l => /^- \[x\]/.test(l));
     if (done.length === 0) continue;
     if (openChangelog.length > 0) continue;
-    atomicRewrite(filePath, c => c.replace(/^status:\s*active\s*$/m, 'status: completed'));
+    atomicRewrite(filePath, c => {
+      c = c.replace(/^status:\s*active\s*$/m, 'status: completed');
+      if (!/^completed_at:/m.test(c)) {
+        c = c.replace(/^status:\s*completed\s*$/m, `status: completed\ncompleted_at: ${todayStr()}`);
+      }
+      return c;
+    });
     const title = getTitle(content) || file;
     completed.push({ file, title });
     console.log(`completed: ${title} (${file})`);
@@ -94,9 +100,34 @@ function completeProjects() {
   return completed;
 }
 
+function archiveProject(slug) {
+  const src = path.join(PROJECT_DIR, `${slug}.md`);
+  if (!fs.existsSync(src)) throw new Error(`not found: ${src}`);
+  const archiveProjectDir = path.join(VAULT_ROOT, 'archive', 'projects');
+  fs.mkdirSync(archiveProjectDir, { recursive: true });
+  fs.renameSync(src, path.join(archiveProjectDir, `${slug}.md`));
+  console.log(`archived project: ${slug}`);
+  const archiveDir = path.join(VAULT_ROOT, 'archive');
+  if (fs.existsSync(PLAN_DIR)) {
+    const plans = fs.readdirSync(PLAN_DIR).filter(f => f.endsWith('.md'));
+    for (const f of plans) {
+      const planPath = path.join(PLAN_DIR, f);
+      const content = fs.readFileSync(planPath, 'utf-8');
+      const fm = parseFrontmatter(content);
+      if (!fm.project) continue;
+      const projSlug = fm.project.replace(/^\[\[/, '').replace(/\]\]$/, '').replace(/^projects\//, '');
+      if (projSlug === slug) {
+        fs.renameSync(planPath, path.join(archiveDir, f));
+        console.log(`archived plan: ${f}`);
+      }
+    }
+  }
+}
+
 module.exports = {
   createProject,
   resolveProject,
   parseChangelog,
   completeProjects,
+  archiveProject,
 };
