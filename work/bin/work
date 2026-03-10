@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const LIB = path.join(__dirname, '..', 'lib');
@@ -31,6 +32,24 @@ function parseOpts(args) {
 
 function getDate(opts) {
   return opts.date || todayStr();
+}
+
+const LOG_PATH = process.env.WORK_LOG_PATH || path.join(os.homedir(), 'Library', 'Logs', 'work-tick.log');
+const LOG_ROTATE_THRESHOLD = 1000;
+
+function rotateLog(dateStr) {
+  if (!fs.existsSync(LOG_PATH)) return;
+  const content = fs.readFileSync(LOG_PATH, 'utf-8');
+  const lines = content.split('\n');
+  if (lines.length <= LOG_ROTATE_THRESHOLD) return;
+  const dir = path.dirname(LOG_PATH);
+  const rotated = path.join(dir, `work-tick-${dateStr}.log`);
+  if (fs.existsSync(rotated)) {
+    fs.appendFileSync(rotated, content);
+  } else {
+    fs.renameSync(LOG_PATH, rotated);
+  }
+  fs.writeFileSync(LOG_PATH, '');
 }
 
 function doGather(dateStr, quiet) {
@@ -84,7 +103,8 @@ Use the Edit tool to write the summary into the daily note.`;
 
   try {
     const claudeCmd = process.env.WORK_CLAUDE_CMD || 'claude';
-    execFileSync(claudeCmd, ['-p', prompt], {
+    execFileSync(claudeCmd, ['-p', '--allowedTools', 'Read', 'Edit'], {
+      input: prompt,
       stdio: ['pipe', 'inherit', 'inherit'],
       timeout: 120000,
     });
@@ -281,6 +301,8 @@ const commands = {
     const dateStr = getDate(opts);
     const errors = [];
 
+    rotateLog(dateStr);
+
     log('=== gather ===');
     errors.push(...doGather(dateStr, quiet));
 
@@ -357,11 +379,11 @@ const commands = {
     }
 
     if (errors.length > 0 && fs.existsSync(np)) {
-      const errMsg = `Investigate work tick errors: ${errors.join('; ')} (check /tmp/work-tick.log)`;
+      const errMsg = `Investigate work tick errors: ${errors.join('; ')} (check ~/Library/Logs/work-tick.log)`;
       const content = fs.readFileSync(np, 'utf-8');
       if (!content.includes('Investigate work tick errors')) {
         const { atomicRewrite } = require(path.join(LIB, 'atomic.js'));
-        atomicRewrite(np, c => insertAtEndOfSection(c, 'Log', [`- [ ] ${errMsg}`]));
+        atomicRewrite(np, c => insertAtEndOfSection(c, 'Tasks', [`- [ ] ${errMsg}`]));
         log('injected error item into log');
       }
     }

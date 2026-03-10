@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.0 — 2026-03-10
+
+- Moved tick log from `/tmp/work-tick.log` to `~/Library/Logs/work-tick.log` (persists across reboots)
+- Added log rotation to `tick` — rotates to dated file when log exceeds 1000 lines
+- Fixed error injection to target `## Tasks` section instead of `## Log`
+- Fixed `wrap` to pass `--allowedTools Read Edit` to Claude and send prompt via stdin
+- Added tests for log rotation, error injection, and Claude permissions
+
 ## 2.2.1 — 2026-03-09
 
 - Fixed evergreen project filtering — projects with `evergreen: true` now included regardless of status

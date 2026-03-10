@@ -265,7 +265,7 @@ All fields are optional. The `WORK_VAULT` environment variable takes precedence 
 | `$WORK_VAULT/archive/` | Archived plans |
 | `$WORK_VAULT/monthly/YYYY-MM.md` | Monthly work summaries |
 | `~/.dotfiles/launchd/com.moon.work-tick.plist` | Hourly launchd timer |
-| `/tmp/work-tick.log` | Tick stdout/stderr (clears on reboot) |
+| `~/Library/Logs/work-tick.log` | Tick stdout/stderr (rotated by `tick`) |
 
 ## Devbox integration
 

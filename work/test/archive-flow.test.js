@@ -312,3 +312,99 @@ completed_at: 2026-03-01
     assert.ok(!note.includes('key:projects/evergreen'));
   });
 });
+
+describe('tick log rotation', () => {
+  it('does not rotate when log is small', () => {
+    const logPath = path.join(tmpDir, 'test-tick.log');
+    fs.writeFileSync(logPath, 'line1\nline2\nline3\n');
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
+
+    runWorkEnv({ WORK_LOG_PATH: logPath }, 'tick', '--verbose', '--date=2026-03-10');
+
+    assert.ok(fs.existsSync(logPath));
+    assert.equal(fs.readFileSync(logPath, 'utf-8'), 'line1\nline2\nline3\n');
+    const rotated = path.join(tmpDir, 'work-tick-2026-03-10.log');
+    assert.ok(!fs.existsSync(rotated));
+  });
+
+  it('rotates when log exceeds threshold', () => {
+    const logPath = path.join(tmpDir, 'test-tick.log');
+    const bigLog = Array.from({ length: 1001 }, (_, i) => `line ${i}`).join('\n') + '\n';
+    fs.writeFileSync(logPath, bigLog);
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
+
+    runWorkEnv({ WORK_LOG_PATH: logPath }, 'tick', '--verbose', '--date=2026-03-10');
+
+    assert.equal(fs.readFileSync(logPath, 'utf-8'), '');
+    const rotated = path.join(tmpDir, 'work-tick-2026-03-10.log');
+    assert.ok(fs.existsSync(rotated));
+    const rotatedContent = fs.readFileSync(rotated, 'utf-8');
+    assert.ok(rotatedContent.includes('line 0'));
+    assert.ok(rotatedContent.includes('line 1000'));
+  });
+
+  it('appends when rotated file already exists', () => {
+    const logPath = path.join(tmpDir, 'test-tick.log');
+    const rotated = path.join(tmpDir, 'work-tick-2026-03-10.log');
+    fs.writeFileSync(rotated, 'previous\n');
+    const bigLog = Array.from({ length: 1001 }, (_, i) => `line ${i}`).join('\n') + '\n';
+    fs.writeFileSync(logPath, bigLog);
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
+
+    runWorkEnv({ WORK_LOG_PATH: logPath }, 'tick', '--verbose', '--date=2026-03-10');
+
+    assert.equal(fs.readFileSync(logPath, 'utf-8'), '');
+    const rotatedContent = fs.readFileSync(rotated, 'utf-8');
+    assert.ok(rotatedContent.startsWith('previous\n'));
+    assert.ok(rotatedContent.includes('line 0'));
+  });
+});
+
+describe('tick error injection', () => {
+  it('injects errors into Tasks section, not Log', () => {
+    fs.rmSync(path.join(tmpDir, 'projects'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'projects'), 'not a directory');
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
+
+    try {
+      runWork('tick', '--verbose', '--date=2026-03-10');
+    } catch {}
+
+    const note = readDailyNote('2026-03-10');
+    const tasksMatch = note.match(/## Tasks\n([\s\S]*?)(?=\n## |$)/);
+    const logMatch = note.match(/## Log\n([\s\S]*?)(?=\n## |$)/);
+    assert.ok(tasksMatch && tasksMatch[1].includes('Investigate work tick errors'));
+    assert.ok(!logMatch || !logMatch[1].includes('Investigate work tick errors'));
+  });
+});
+
+describe('wrap passes --allowedTools', () => {
+  it('passes --allowedTools and prompt via stdin to claude', () => {
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
+
+    const argsFile = path.join(tmpDir, 'claude-args.txt');
+    const stdinFile = path.join(tmpDir, 'claude-stdin.txt');
+    const fakeClaude = path.join(tmpDir, 'fake-claude.js');
+    fs.writeFileSync(fakeClaude, [
+      '#!/usr/bin/env node',
+      `const fs = require('fs');`,
+      `fs.writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));`,
+      `let stdin = '';`,
+      `process.stdin.setEncoding('utf-8');`,
+      `process.stdin.on('data', d => stdin += d);`,
+      `process.stdin.on('end', () => {`,
+      `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
+      `});`,
+    ].join('\n'), { mode: 0o755 });
+
+    runWorkEnv({ WORK_CLAUDE_CMD: fakeClaude }, 'wrap', '--date=2026-03-10');
+
+    const args = JSON.parse(fs.readFileSync(argsFile, 'utf-8'));
+    assert.ok(args.includes('--allowedTools'));
+    assert.ok(args.includes('Read'));
+    assert.ok(args.includes('Edit'));
+    assert.ok(args.includes('-p'));
+    const stdin = fs.readFileSync(stdinFile, 'utf-8');
+    assert.ok(stdin.includes('Read the daily note'));
+  });
+});
