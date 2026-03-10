@@ -17,24 +17,14 @@ Record a task completion: check it off in the source file and log it to the dail
 
 Determine which project or plan file contains the task. Use the session context (project file) if available.
 
-### 2. Check off the task
+### 2. Complete the task
 
 ```
-work check-off <file> "<description>"
+work complete <file> "<description>"
 ```
 
-Where `<file>` is the relative path from the vault root (e.g. `projects/work.md`).
+Where `<file>` is the absolute path to the project or plan file. This checks off the task in the source file and logs it to the daily note in one step.
 
-### 3. Log to daily note
-
-```
-work append-log "<description>" --source-type=<project|plan> --source-slug=<slug> --source-title="<title>"
-```
-
-- `--source-type`: `project` or `plan`
-- `--source-slug`: the file slug (e.g. `work`, `dotfiles`)
-- `--source-title`: display title for the wikilink
-
-### 4. Regenerate tasks view
+### 3. Regenerate tasks view
 
 Run `work gather` to update the daily note tasks section.

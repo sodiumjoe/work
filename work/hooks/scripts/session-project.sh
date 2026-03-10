@@ -31,11 +31,7 @@ $CONTENT
 ### Instructions
 
 - This session is scoped to the project above. Prioritize work items from this project.
-- Use \`work check-off\` and \`work append-log\` to record completions against this project."
-
-if [ -n "$CLAUDE_TASK" ]; then
-  tmux set -w @window_label "$CLAUDE_TASK" 2>/dev/null || true
-fi
+- Use \`work complete\` to record completions against this project."
 
 jq -n \
   --arg ctx "$CONTEXT" \
