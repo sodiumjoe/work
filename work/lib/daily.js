@@ -8,7 +8,18 @@ function ensure(dateStr, { quiet } = {}) {
   const log = quiet ? () => {} : console.log.bind(console);
   const p = notePath(dateStr);
   if (!fs.existsSync(p)) {
-    fs.writeFileSync(p, '## Tasks\n\n## Log\n');
+    const frontmatter = `---
+id: ${dateStr}
+aliases: []
+tags:
+  - daily-notes
+---
+
+## Tasks
+
+## Log
+`;
+    fs.writeFileSync(p, frontmatter);
     log(`created ${p}`);
     return;
   }
