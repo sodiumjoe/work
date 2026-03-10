@@ -194,6 +194,26 @@ permanent: true
     assert.ok(result.includes('status: active'));
   });
 
+  it('skips evergreen projects', () => {
+    writeProject('eg.md', `---
+status: evergreen
+---
+
+# Evergreen
+
+## Changelog
+- [x] Done ✅ 2026-03-01
+
+## Notes`);
+
+    const { completeProjects } = requireFresh();
+    const completed = completeProjects();
+    assert.equal(completed.length, 0);
+
+    const result = fs.readFileSync(path.join(tmpDir, 'projects', 'eg.md'), 'utf-8');
+    assert.ok(result.includes('status: evergreen'));
+  });
+
   it('blocks completion when Tasks section has open items', () => {
     writeProject('open-tasks.md', `---
 status: active

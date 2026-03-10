@@ -33,7 +33,7 @@ Read every `*.md` file in `$(work paths projects)` (excluding `_template.md`).
 
 For each file, parse the frontmatter. Collect projects where:
 - `status: completed`
-- NOT `evergreen: true`
+- NOT `status: evergreen`
 
 For each, record the slug, title, `completed_at` date, and count of associated plans found in step 2.
 

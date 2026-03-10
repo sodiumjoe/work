@@ -293,9 +293,7 @@ status: active
 
   it('skips evergreen projects when proposing', () => {
     writeProject('evergreen.md', `---
-status: completed
-evergreen: true
-completed_at: 2026-03-01
+status: evergreen
 ---
 
 # Evergreen

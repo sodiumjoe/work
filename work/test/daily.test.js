@@ -228,8 +228,7 @@ status: active
 ## Notes`);
 
     writeProject('a-evergreen.md', `---
-status: completed
-evergreen: true
+status: evergreen
 ---
 
 # A Evergreen

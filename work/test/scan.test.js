@@ -120,10 +120,9 @@ status: completed
     assert.equal(results.length, 0);
   });
 
-  it('includes evergreen completed projects', () => {
+  it('includes evergreen projects', () => {
     writeProject('eg.md', `---
-status: completed
-evergreen: true
+status: evergreen
 ---
 
 # Evergreen
@@ -143,8 +142,7 @@ evergreen: true
 
   it('adds placeholder for evergreen projects with no open tasks', () => {
     writeProject('eg-empty.md', `---
-status: completed
-evergreen: true
+status: evergreen
 ---
 
 # Evergreen Empty

@@ -77,6 +77,7 @@ function completeProjects() {
     const content = fs.readFileSync(filePath, 'utf-8');
     const fm = parseFrontmatter(content);
     if (fm.status === 'completed') continue;
+    if (fm.status === 'evergreen') continue;
     if (fm.permanent === 'true' || fm.permanent === true) continue;
     const tasks = extractSection(content, 'Tasks');
     const openTasks = tasks.filter(l => /^- \[[ /]\]/.test(l));
