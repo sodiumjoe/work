@@ -126,7 +126,7 @@ status: completed
     ].join('\n'));
 
     const output = runWork('tick', '--verbose', '--date=2026-03-10');
-    assert.ok(output.includes('archived: to-archive'));
+    assert.ok(output.includes('archived project: to-archive'));
     assert.ok(!fs.existsSync(path.join(tmpDir, 'projects', 'to-archive.md')));
     assert.ok(fs.existsSync(path.join(tmpDir, 'archive', 'projects', 'to-archive.md')));
     const note = readDailyNote('2026-03-10');
@@ -457,5 +457,205 @@ describe('wrap passes --allowedTools', () => {
     assert.ok(args.includes('-p'));
     const stdin = fs.readFileSync(stdinFile, 'utf-8');
     assert.ok(stdin.includes('Read the daily note'));
+  });
+});
+
+describe('orphaned plan proposals via tick on Sunday', () => {
+  it('proposes orphaned plans on Sunday', () => {
+    writePlan('orphan-plan.md', `---
+status: active
+---
+
+# Orphan Plan
+
+## Changelog
+- [x] Did work ✅ 2026-03-01`);
+
+    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+
+    const output = runWork('tick', '--verbose', '--date=2026-03-08');
+    assert.ok(output.includes('propose'));
+    const note = readDailyNote('2026-03-08');
+    assert.ok(note.includes('key:plans/orphan-plan'));
+    assert.ok(note.includes('orphaned plan'));
+  });
+
+  it('skips plans with project field', () => {
+    writePlan('linked-plan.md', `---
+status: active
+project: "[[projects/foo]]"
+---
+
+# Linked Plan
+
+## Changelog
+- [x] Done ✅ 2026-03-01`);
+
+    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+
+    runWork('tick', '--verbose', '--date=2026-03-08');
+    const note = readDailyNote('2026-03-08');
+    assert.ok(!note.includes('key:plans/linked-plan'));
+  });
+
+  it('skips plans with open items', () => {
+    writePlan('open-plan.md', `---
+status: active
+---
+
+# Open Plan
+
+## Changelog
+- [ ] Still working
+- [x] Done ✅ 2026-03-01`);
+
+    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+
+    runWork('tick', '--verbose', '--date=2026-03-08');
+    const note = readDailyNote('2026-03-08');
+    assert.ok(!note.includes('key:plans/open-plan'));
+  });
+});
+
+describe('tick dequeues plan items', () => {
+  it('archives checked plan items', () => {
+    writePlan('to-archive.md', `---
+status: active
+---
+
+# To Archive
+
+## Changelog
+- [x] Done ✅ 2026-03-01`);
+
+    writeDailyNote('2026-03-10', [
+      '## Tasks',
+      '',
+      '## Log',
+      '',
+      '## Archive',
+      '- [x] To Archive — orphaned plan <!-- key:plans/to-archive -->',
+    ].join('\n'));
+
+    const output = runWork('tick', '--verbose', '--date=2026-03-10');
+    assert.ok(output.includes('archived plan: to-archive'));
+    assert.ok(!fs.existsSync(path.join(tmpDir, 'plans', 'to-archive.md')));
+    assert.ok(fs.existsSync(path.join(tmpDir, 'archive', 'to-archive.md')));
+  });
+
+  it('dequeues both project and plan items', () => {
+    writeProject('proj.md', `---
+status: completed
+---
+
+# Proj
+
+## Changelog
+- [x] Done ✅ 2026-03-01`);
+
+    writePlan('plan.md', `---
+status: active
+---
+
+# Plan
+
+## Changelog
+- [x] Done ✅ 2026-03-01`);
+
+    writeDailyNote('2026-03-10', [
+      '## Tasks',
+      '',
+      '## Log',
+      '',
+      '## Archive',
+      '- [x] [[projects/proj|Proj]] — completed 2026-03-01 <!-- key:projects/proj -->',
+      '- [x] Plan — orphaned plan <!-- key:plans/plan -->',
+    ].join('\n'));
+
+    const output = runWork('tick', '--verbose', '--date=2026-03-10');
+    assert.ok(output.includes('archived project: proj'));
+    assert.ok(output.includes('archived plan: plan'));
+    assert.ok(fs.existsSync(path.join(tmpDir, 'archive', 'projects', 'proj.md')));
+    assert.ok(fs.existsSync(path.join(tmpDir, 'archive', 'plan.md')));
+  });
+
+  it('skips unknown key prefix without throwing', () => {
+    writeDailyNote('2026-03-10', [
+      '## Tasks',
+      '',
+      '## Log',
+      '',
+      '## Archive',
+      '- [x] Mystery item <!-- key:unknown/thing -->',
+    ].join('\n'));
+
+    const output = runWork('tick', '--verbose', '--date=2026-03-10');
+    assert.ok(output.includes('unknown archive key'));
+  });
+});
+
+describe('tick writes weekly summary on Sunday', () => {
+  it('spawns claude for weekly summary', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Weekly Project
+
+## Tasks
+
+## Changelog
+- [x] Weekly work ✅ 2026-03-05
+
+## Notes`);
+
+    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+
+    const weeklyDir = path.join(tmpDir, 'weekly');
+    const outputPath = path.join(weeklyDir, '2026-W10.md');
+    const stdinFile = path.join(tmpDir, 'claude-stdin.txt');
+    const fakeClaude = path.join(tmpDir, 'fake-claude.js');
+    fs.writeFileSync(fakeClaude, [
+      '#!/usr/bin/env node',
+      `const fs = require('fs');`,
+      `let stdin = '';`,
+      `process.stdin.setEncoding('utf-8');`,
+      `process.stdin.on('data', d => stdin += d);`,
+      `process.stdin.on('end', () => {`,
+      `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
+      `  fs.mkdirSync(${JSON.stringify(weeklyDir)}, { recursive: true });`,
+      `  fs.writeFileSync(${JSON.stringify(outputPath)}, '# 2026-W10 Work Summary\\n\\nNarrative.');`,
+      `});`,
+    ].join('\n'), { mode: 0o755 });
+
+    const output = runWorkEnv(
+      { WORK_CLAUDE_CMD: fakeClaude },
+      'tick', '--verbose', '--date=2026-03-08'
+    );
+    assert.ok(output.includes('weekly summary'));
+    assert.ok(fs.existsSync(outputPath));
+    const stdin = fs.readFileSync(stdinFile, 'utf-8');
+    assert.ok(stdin.includes('Weekly Project'));
+    assert.ok(stdin.includes('Weekly work'));
+  });
+
+  it('does not write weekly summary on non-Sunday', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Project
+
+## Tasks
+
+## Changelog
+- [x] Work ✅ 2026-03-10
+
+## Notes`);
+
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
+
+    runWork('tick', '--verbose', '--date=2026-03-10');
+    assert.ok(!fs.existsSync(path.join(tmpDir, 'weekly')));
   });
 });

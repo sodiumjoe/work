@@ -554,3 +554,85 @@ status: active
     assert.throws(() => setTaskState('/nonexistent/file.md', 1, 'done', '2026-03-10'), /file not found/);
   });
 });
+
+describe('scanOrphanedPlans', () => {
+  it('returns plans with no project and all done items', () => {
+    writePlan('orphan.md', `---
+status: active
+---
+
+# Orphan Plan
+
+## Changelog
+- [x] Did something ✅ 2026-03-01
+- [x] Did another thing ✅ 2026-03-02`);
+
+    const { scanOrphanedPlans } = requireFresh();
+    const results = scanOrphanedPlans();
+    assert.equal(results.length, 1);
+    assert.equal(results[0].name, 'orphan');
+    assert.equal(results[0].title, 'Orphan Plan');
+  });
+
+  it('excludes plans with project field', () => {
+    writePlan('linked.md', `---
+status: active
+project: "[[projects/foo]]"
+---
+
+# Linked Plan
+
+## Changelog
+- [x] Done ✅ 2026-03-01`);
+
+    const { scanOrphanedPlans } = requireFresh();
+    const results = scanOrphanedPlans();
+    assert.equal(results.length, 0);
+  });
+
+  it('excludes plans with open items', () => {
+    writePlan('open.md', `---
+status: active
+---
+
+# Open Plan
+
+## Changelog
+- [ ] Still working
+- [x] Done ✅ 2026-03-01`);
+
+    const { scanOrphanedPlans } = requireFresh();
+    const results = scanOrphanedPlans();
+    assert.equal(results.length, 0);
+  });
+
+  it('excludes plans with in-progress items', () => {
+    writePlan('wip.md', `---
+status: active
+---
+
+# WIP Plan
+
+## Changelog
+- [/] In progress
+- [x] Done ✅ 2026-03-01`);
+
+    const { scanOrphanedPlans } = requireFresh();
+    const results = scanOrphanedPlans();
+    assert.equal(results.length, 0);
+  });
+
+  it('excludes plans with no done items', () => {
+    writePlan('empty.md', `---
+status: active
+---
+
+# Empty Plan
+
+## Changelog`);
+
+    const { scanOrphanedPlans } = requireFresh();
+    const results = scanOrphanedPlans();
+    assert.equal(results.length, 0);
+  });
+});

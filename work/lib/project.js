@@ -142,11 +142,21 @@ function listProjects() {
   return results;
 }
 
+function archivePlan(name) {
+  const src = path.join(PLAN_DIR, `${name}.md`);
+  if (!fs.existsSync(src)) throw new Error(`not found: ${src}`);
+  const archiveDir = path.join(VAULT_ROOT, 'archive');
+  fs.mkdirSync(archiveDir, { recursive: true });
+  fs.renameSync(src, path.join(archiveDir, `${name}.md`));
+  console.log(`archived plan: ${name}`);
+}
+
 module.exports = {
   createProject,
   resolveProject,
   parseChangelog,
   completeProjects,
   archiveProject,
+  archivePlan,
   listProjects,
 };

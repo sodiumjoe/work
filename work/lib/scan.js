@@ -174,10 +174,29 @@ function setTaskState(filePath, lineNum, state, dateStr) {
   });
 }
 
+function scanOrphanedPlans() {
+  if (!fs.existsSync(PLAN_DIR)) return [];
+  const files = fs.readdirSync(PLAN_DIR).filter(f => f.endsWith('.md'));
+  const results = [];
+  for (const f of files) {
+    const content = fs.readFileSync(path.join(PLAN_DIR, f), 'utf-8');
+    const fm = parseFrontmatter(content);
+    if (fm.project) continue;
+    const changelog = extractSection(content, 'Changelog');
+    const open = changelog.filter(l => /^- \[[ /]\] /.test(l));
+    const done = changelog.filter(l => /^- \[x\] /.test(l));
+    if (open.length > 0 || done.length === 0) continue;
+    const title = getTitle(content) || f.replace('.md', '');
+    results.push({ name: f.replace('.md', ''), title });
+  }
+  return results;
+}
+
 module.exports = {
   scanOpenItems,
   formatScanTSV,
   syncCheck,
   listTasks,
   setTaskState,
+  scanOrphanedPlans,
 };

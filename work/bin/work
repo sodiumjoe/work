@@ -6,8 +6,9 @@ const path = require('node:path');
 const LIB = path.join(__dirname, '..', 'lib');
 const { ensure, logSyncEntries, inject } = require(path.join(LIB, 'daily.js'));
 const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
-const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState } = require(path.join(LIB, 'scan.js'));
-const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, listProjects } = require(path.join(LIB, 'project.js'));
+const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState, scanOrphanedPlans } = require(path.join(LIB, 'scan.js'));
+const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, archivePlan, listProjects } = require(path.join(LIB, 'project.js'));
+const { writeWeeklySummary } = require(path.join(LIB, 'summary.js'));
 const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
 const { extractSection, insertAtEndOfSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
 const { checkOff, appendLog } = require(path.join(LIB, 'changelog.js'));
@@ -382,9 +383,17 @@ const commands = {
     try {
       const approved = dequeue(dateStr, 'Archive');
       for (const item of approved) {
-        const slug = item.key.replace(/^projects\//, '');
-        archiveProject(slug);
-        log(`archived: ${slug}`);
+        if (item.key.startsWith('projects/')) {
+          const slug = item.key.replace(/^projects\//, '');
+          archiveProject(slug);
+          log(`archived project: ${slug}`);
+        } else if (item.key.startsWith('plans/')) {
+          const name = item.key.replace(/^plans\//, '');
+          archivePlan(name);
+          log(`archived plan: ${name}`);
+        } else {
+          log(`unknown archive key: ${item.key}`);
+        }
       }
       if (approved.length === 0) log('nothing to archive');
     } catch (e) {
@@ -411,15 +420,32 @@ const commands = {
           const completedAt = fm.completed_at || 'unknown';
           items.push({ key: `projects/${slug}`, label: `[[projects/${slug}|${title}]] — completed ${completedAt}` });
         }
+        const orphans = scanOrphanedPlans();
+        for (const o of orphans) {
+          items.push({ key: `plans/${o.name}`, label: `${o.title} — orphaned plan` });
+        }
         if (items.length > 0) {
           const count = enqueue(dateStr, 'Archive', items);
-          log(`proposed ${count || 0} project(s) for archive`);
+          log(`proposed ${count || 0} item(s) for archive`);
         } else {
-          log('no completed projects to propose');
+          log('nothing to propose');
         }
       } catch (e) {
         console.error('FAIL: archive propose');
         errors.push(`archive-propose: ${e.message}`);
+      }
+
+      log('=== weekly summary ===');
+      try {
+        const summaryPath = writeWeeklySummary(dateStr);
+        if (summaryPath) {
+          log(`wrote weekly summary: ${summaryPath}`);
+        } else {
+          log('no entries for weekly summary');
+        }
+      } catch (e) {
+        console.error('FAIL: weekly summary');
+        errors.push(`weekly-summary: ${e.message}`);
       }
     }
 
