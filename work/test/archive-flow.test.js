@@ -358,21 +358,74 @@ describe('tick log rotation', () => {
   });
 });
 
-describe('tick error injection', () => {
-  it('injects errors into Tasks section, not Log', () => {
+describe('tick error debug', () => {
+  function makeFakeClaude() {
+    const argsFile = path.join(tmpDir, 'claude-args.txt');
+    const stdinFile = path.join(tmpDir, 'claude-stdin.txt');
+    const fakeClaude = path.join(tmpDir, 'fake-claude.js');
+    fs.writeFileSync(fakeClaude, [
+      '#!/usr/bin/env node',
+      `const fs = require('fs');`,
+      `fs.writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));`,
+      `let stdin = '';`,
+      `process.stdin.setEncoding('utf-8');`,
+      `process.stdin.on('data', d => stdin += d);`,
+      `process.stdin.on('end', () => {`,
+      `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
+      `});`,
+    ].join('\n'), { mode: 0o755 });
+    return { fakeClaude, argsFile, stdinFile };
+  }
+
+  it('spawns Claude on error with correct args and prompt', () => {
+    const { fakeClaude, argsFile, stdinFile } = makeFakeClaude();
     fs.rmSync(path.join(tmpDir, 'projects'), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, 'projects'), 'not a directory');
     writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
+    let output;
     try {
-      runWork('tick', '--verbose', '--date=2026-03-10');
+      output = runWorkEnv({ WORK_CLAUDE_CMD: fakeClaude }, 'tick', '--verbose', '--date=2026-03-10');
+    } catch (e) {
+      output = e.stdout || '';
+    }
+
+    assert.ok(output.includes('ERROR'));
+    assert.ok(fs.existsSync(argsFile), 'claude should have been invoked');
+    const args = JSON.parse(fs.readFileSync(argsFile, 'utf-8'));
+    assert.ok(args.includes('-p'));
+    assert.ok(args.includes('--allowedTools'));
+    assert.ok(args.includes('Read'));
+    assert.ok(args.includes('Glob'));
+    assert.ok(args.includes('Grep'));
+    assert.ok(args.includes('Write'));
+    assert.ok(args.includes('Edit'));
+    const stdin = fs.readFileSync(stdinFile, 'utf-8');
+    assert.ok(stdin.includes('tick command encountered errors'));
+    assert.ok(stdin.includes('Fix tick error:'));
+  });
+
+  it('skips Claude if tick-error task already exists', () => {
+    const { fakeClaude, argsFile } = makeFakeClaude();
+    writeProject('work.md', '---\nstatus: evergreen\n---\n\n# work\n\n## Tasks\n\n- [ ] Fix tick error: previous error\n\n## Changelog\n');
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
+
+    try {
+      runWorkEnv({ WORK_CLAUDE_CMD: fakeClaude }, 'tick', '--verbose', '--date=2026-03-10', '--simulate-error');
     } catch {}
 
-    const note = readDailyNote('2026-03-10');
-    const tasksMatch = note.match(/## Tasks\n([\s\S]*?)(?=\n## |$)/);
-    const logMatch = note.match(/## Log\n([\s\S]*?)(?=\n## |$)/);
-    assert.ok(tasksMatch && tasksMatch[1].includes('Investigate work tick errors'));
-    assert.ok(!logMatch || !logMatch[1].includes('Investigate work tick errors'));
+    assert.ok(!fs.existsSync(argsFile), 'claude should NOT have been invoked');
+  });
+
+  it('logs syslog INFO on success', () => {
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
+    const { fakeClaude, argsFile } = makeFakeClaude();
+
+    const output = runWorkEnv({ WORK_CLAUDE_CMD: fakeClaude }, 'tick', '--date=2026-03-10');
+
+    assert.ok(output.includes('INFO'));
+    assert.ok(output.includes('tick ok'));
+    assert.ok(!fs.existsSync(argsFile), 'claude should NOT have been invoked');
   });
 });
 

@@ -73,6 +73,47 @@ function doGather(dateStr, quiet) {
   return errors;
 }
 
+function syslog(level, msg) {
+  console.log(`${new Date().toISOString()} ${level.padEnd(5)} ${msg}`);
+}
+
+function doErrorDebug(dateStr, errors) {
+  const { execFileSync } = require('node:child_process');
+  const workProjectPath = path.join(PROJECT_DIR, 'work.md');
+  if (fs.existsSync(workProjectPath)) {
+    const content = fs.readFileSync(workProjectPath, 'utf-8');
+    if (/^- \[[ /]\] Fix tick error:/m.test(content)) return;
+  }
+  const projectRoot = path.join(__dirname, '..', '..');
+  const prompt = `The work tick command encountered errors during its hourly run on ${dateStr}:
+
+${errors.map(e => `- ${e}`).join('\n')}
+
+The tick source code is at work/bin/work. The tick() function starts around line 315.
+The log file is at ${LOG_PATH}.
+
+Investigate the root cause by reading the relevant source files. Then:
+1. Create a plan file at ${PLAN_DIR}/${dateStr}-tick-error.md with this frontmatter:
+   ---
+   status: active
+   project: "[[projects/work]]"
+   ---
+2. Add a task to the work project file at ${workProjectPath}. Use the Edit tool to append a line to the ## Tasks section:
+   - [ ] Fix tick error: <one-line summary> — [[plans/${dateStr}-tick-error]]`;
+
+  try {
+    const claudeCmd = process.env.WORK_CLAUDE_CMD || 'claude';
+    execFileSync(claudeCmd, ['-p', '--allowedTools', 'Read', 'Glob', 'Grep', 'Write', 'Edit'], {
+      input: prompt,
+      cwd: projectRoot,
+      stdio: ['pipe', 'inherit', 'inherit'],
+      timeout: 120000,
+    });
+  } catch (e) {
+    syslog('ERROR', `tick: doErrorDebug failed: ${e.message}`);
+  }
+}
+
 function doWrap(dateStr) {
   const { execFileSync } = require('node:child_process');
 
@@ -395,14 +436,15 @@ const commands = {
       }
     }
 
-    if (errors.length > 0 && fs.existsSync(np)) {
-      const errMsg = `Investigate work tick errors: ${errors.join('; ')} (check ~/Library/Logs/work-tick.log)`;
-      const content = fs.readFileSync(np, 'utf-8');
-      if (!content.includes('Investigate work tick errors')) {
-        const { atomicRewrite } = require(path.join(LIB, 'atomic.js'));
-        atomicRewrite(np, c => insertAtEndOfSection(c, 'Tasks', [`- [ ] ${errMsg}`]));
-        log('injected error item into log');
-      }
+    if (opts['simulate-error']) {
+      errors.push('simulate: synthetic error for testing');
+    }
+
+    if (errors.length > 0) {
+      for (const e of errors) syslog('ERROR', `tick: ${e}`);
+      doErrorDebug(dateStr, errors);
+    } else {
+      syslog('INFO', 'tick ok');
     }
   },
 
