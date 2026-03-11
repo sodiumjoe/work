@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { extractSection, parseFrontmatter, getTitle } = require('./markdown.js');
+const { extractSection, findSectionLineRange, parseFrontmatter, getTitle } = require('./markdown.js');
+const { atomicRewrite } = require('./atomic.js');
 const { PLAN_DIR, PROJECT_DIR, notePath } = require('./paths.js');
 
 function scanOpenItems() {
@@ -106,8 +107,77 @@ function syncCheck(dateStr) {
   });
 }
 
+function listTasks(filePath) {
+  const results = [];
+  if (filePath) {
+    if (!fs.existsSync(filePath)) return results;
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+    const title = getTitle(content);
+    const range = findSectionLineRange(lines, 'Tasks');
+    if (!range) return results;
+    for (let i = range.start + 1; i < range.end; i++) {
+      if (/^- \[[ /]\] /.test(lines[i])) {
+        const state = lines[i].match(/^- \[(.)\]/)[1];
+        const description = lines[i].replace(/^- \[.\] /, '');
+        results.push({ file: filePath, line: i + 1, state, title, description });
+      }
+    }
+    return results;
+  }
+  if (!fs.existsSync(PROJECT_DIR)) return results;
+  const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md');
+  for (const f of files) {
+    const fp = path.join(PROJECT_DIR, f);
+    const content = fs.readFileSync(fp, 'utf-8');
+    const fm = parseFrontmatter(content);
+    if (fm.status !== 'active' && fm.status !== 'evergreen') continue;
+    const lines = content.split('\n');
+    const title = getTitle(content);
+    const range = findSectionLineRange(lines, 'Tasks');
+    if (!range) continue;
+    for (let i = range.start + 1; i < range.end; i++) {
+      if (/^- \[[ /]\] /.test(lines[i])) {
+        const state = lines[i].match(/^- \[(.)\]/)[1];
+        const description = lines[i].replace(/^- \[.\] /, '');
+        results.push({ file: fp, line: i + 1, state, title, description });
+      }
+    }
+  }
+  return results;
+}
+
+function setTaskState(filePath, lineNum, state, dateStr) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`file not found: ${filePath}`);
+  }
+  const stateChar = state === 'open' ? ' ' : state === 'in-progress' ? '/' : 'x';
+  atomicRewrite(filePath, content => {
+    const lines = content.split('\n');
+    const idx = lineNum - 1;
+    if (idx < 0 || idx >= lines.length) {
+      throw new Error(`line ${lineNum} out of range`);
+    }
+    if (!/^- \[.\] /.test(lines[idx])) {
+      throw new Error(`line ${lineNum} is not a checkbox item`);
+    }
+    let text = lines[idx].replace(/^- \[.\] /, '');
+    if (state === 'done') {
+      if (!/ ✅ \d{4}-\d{2}-\d{2}$/.test(text)) {
+        text = `${text} ✅ ${dateStr}`;
+      }
+    } else {
+      text = text.replace(/ ✅ \d{4}-\d{2}-\d{2}$/, '');
+    }
+    lines[idx] = `- [${stateChar}] ${text}`;
+    return lines.join('\n');
+  });
+}
+
 module.exports = {
   scanOpenItems,
   formatScanTSV,
   syncCheck,
+  listTasks,
+  setTaskState,
 };

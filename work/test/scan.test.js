@@ -278,3 +278,279 @@ project: "[[projects/my-proj]]"
     assert.equal(results[0].sourceType, 'plan');
   });
 });
+
+describe('listTasks', () => {
+  it('returns tasks with line numbers from all active projects', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] First task
+- [/] In progress task
+- [x] Done task
+
+## Changelog
+
+## Notes`);
+
+    const { listTasks } = requireFresh();
+    const results = listTasks();
+    assert.equal(results.length, 2);
+    assert.equal(results[0].description, 'First task');
+    assert.equal(results[0].state, ' ');
+    assert.equal(results[0].line, 8);
+    assert.equal(results[1].description, 'In progress task');
+    assert.equal(results[1].state, '/');
+    assert.equal(results[1].line, 9);
+  });
+
+  it('filters to active and evergreen projects', () => {
+    writeProject('active.md', `---
+status: active
+---
+
+# Active
+
+## Tasks
+- [ ] Active task
+
+## Changelog`);
+
+    writeProject('evergreen.md', `---
+status: evergreen
+---
+
+# Evergreen
+
+## Tasks
+- [ ] Evergreen task
+
+## Changelog`);
+
+    writeProject('completed.md', `---
+status: completed
+---
+
+# Completed
+
+## Tasks
+- [ ] Should not appear
+
+## Changelog`);
+
+    const { listTasks } = requireFresh();
+    const results = listTasks();
+    assert.equal(results.length, 2);
+    const descriptions = results.map(r => r.description);
+    assert.ok(descriptions.includes('Active task'));
+    assert.ok(descriptions.includes('Evergreen task'));
+  });
+
+  it('returns tasks from single file regardless of status', () => {
+    const filePath = path.join(tmpDir, 'projects', 'completed.md');
+    writeProject('completed.md', `---
+status: completed
+---
+
+# Completed
+
+## Tasks
+- [ ] Leftover task
+
+## Changelog`);
+
+    const { listTasks } = requireFresh();
+    const results = listTasks(filePath);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].description, 'Leftover task');
+  });
+
+  it('returns empty array for empty tasks section', () => {
+    writeProject('empty.md', `---
+status: active
+---
+
+# Empty
+
+## Tasks
+
+## Changelog`);
+
+    const { listTasks } = requireFresh();
+    const results = listTasks();
+    assert.equal(results.length, 0);
+  });
+
+  it('returns absolute file paths', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] A task
+
+## Changelog`);
+
+    const { listTasks } = requireFresh();
+    const results = listTasks();
+    assert.ok(path.isAbsolute(results[0].file));
+  });
+
+  it('returns empty array for nonexistent file', () => {
+    const { listTasks } = requireFresh();
+    const results = listTasks('/nonexistent/file.md');
+    assert.equal(results.length, 0);
+  });
+});
+
+describe('setTaskState', () => {
+  it('sets open task to in-progress', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] My task
+
+## Changelog`);
+
+    const filePath = path.join(tmpDir, 'projects', 'proj.md');
+    const { setTaskState } = requireFresh();
+    setTaskState(filePath, 8, 'in-progress', '2026-03-10');
+
+    const result = fs.readFileSync(filePath, 'utf-8');
+    assert.ok(result.includes('- [/] My task'));
+  });
+
+  it('sets in-progress task to done with date stamp', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [/] My task
+
+## Changelog`);
+
+    const filePath = path.join(tmpDir, 'projects', 'proj.md');
+    const { setTaskState } = requireFresh();
+    setTaskState(filePath, 8, 'done', '2026-03-10');
+
+    const result = fs.readFileSync(filePath, 'utf-8');
+    assert.ok(result.includes('- [x] My task ✅ 2026-03-10'));
+  });
+
+  it('sets done task back to open and strips date', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [x] My task ✅ 2026-03-10
+
+## Changelog`);
+
+    const filePath = path.join(tmpDir, 'projects', 'proj.md');
+    const { setTaskState } = requireFresh();
+    setTaskState(filePath, 8, 'open', '2026-03-10');
+
+    const result = fs.readFileSync(filePath, 'utf-8');
+    assert.ok(result.includes('- [ ] My task'));
+    assert.ok(!result.includes('✅'));
+  });
+
+  it('preserves existing done date when setting to done', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] My task ✅ 2026-03-05
+
+## Changelog`);
+
+    const filePath = path.join(tmpDir, 'projects', 'proj.md');
+    const { setTaskState } = requireFresh();
+    setTaskState(filePath, 8, 'done', '2026-03-10');
+
+    const result = fs.readFileSync(filePath, 'utf-8');
+    assert.ok(result.includes('✅ 2026-03-05'));
+    assert.ok(!result.includes('✅ 2026-03-10'));
+  });
+
+  it('preserves other lines unchanged', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] First
+- [ ] Second
+- [ ] Third
+
+## Changelog`);
+
+    const filePath = path.join(tmpDir, 'projects', 'proj.md');
+    const { setTaskState } = requireFresh();
+    setTaskState(filePath, 9, 'in-progress', '2026-03-10');
+
+    const result = fs.readFileSync(filePath, 'utf-8');
+    assert.ok(result.includes('- [ ] First'));
+    assert.ok(result.includes('- [/] Second'));
+    assert.ok(result.includes('- [ ] Third'));
+  });
+
+  it('throws on invalid line number', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] Task
+
+## Changelog`);
+
+    const filePath = path.join(tmpDir, 'projects', 'proj.md');
+    const { setTaskState } = requireFresh();
+    assert.throws(() => setTaskState(filePath, 999, 'done', '2026-03-10'), /out of range/);
+  });
+
+  it('throws on non-checkbox line', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] Task
+
+## Changelog`);
+
+    const filePath = path.join(tmpDir, 'projects', 'proj.md');
+    const { setTaskState } = requireFresh();
+    assert.throws(() => setTaskState(filePath, 7, 'done', '2026-03-10'), /not a checkbox/);
+  });
+
+  it('throws on missing file', () => {
+    const { setTaskState } = requireFresh();
+    assert.throws(() => setTaskState('/nonexistent/file.md', 1, 'done', '2026-03-10'), /file not found/);
+  });
+});

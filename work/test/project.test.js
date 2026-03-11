@@ -481,6 +481,126 @@ status: active
   });
 });
 
+describe('listProjects', () => {
+  it('returns active projects', () => {
+    writeProject('alpha.md', `---
+status: active
+---
+
+# Alpha
+
+## Tasks
+
+## Changelog`);
+
+    const { listProjects } = requireFresh();
+    const results = listProjects();
+    assert.equal(results.length, 1);
+    assert.equal(results[0].slug, 'alpha');
+    assert.equal(results[0].title, 'Alpha');
+    assert.equal(results[0].status, 'active');
+  });
+
+  it('returns evergreen projects', () => {
+    writeProject('infra.md', `---
+status: evergreen
+---
+
+# Infra
+
+## Tasks
+
+## Changelog`);
+
+    const { listProjects } = requireFresh();
+    const results = listProjects();
+    assert.equal(results.length, 1);
+    assert.equal(results[0].slug, 'infra');
+    assert.equal(results[0].status, 'evergreen');
+  });
+
+  it('excludes completed projects', () => {
+    writeProject('done.md', `---
+status: completed
+completed_at: 2026-03-01
+---
+
+# Done
+
+## Changelog
+- [x] Item ✅ 2026-03-01`);
+
+    const { listProjects } = requireFresh();
+    const results = listProjects();
+    assert.equal(results.length, 0);
+  });
+
+  it('returns empty array for empty projects dir', () => {
+    const { listProjects } = requireFresh();
+    const results = listProjects();
+    assert.equal(results.length, 0);
+  });
+
+  it('returns both active and evergreen projects', () => {
+    writeProject('a.md', `---
+status: active
+---
+
+# Active One
+
+## Tasks`);
+
+    writeProject('b.md', `---
+status: evergreen
+---
+
+# Evergreen One
+
+## Tasks`);
+
+    writeProject('c.md', `---
+status: completed
+---
+
+# Completed One
+
+## Changelog
+- [x] Done ✅ 2026-03-01`);
+
+    const { listProjects } = requireFresh();
+    const results = listProjects();
+    assert.equal(results.length, 2);
+    const slugs = results.map(r => r.slug).sort();
+    assert.deepEqual(slugs, ['a', 'b']);
+  });
+
+  it('defaults to active when status is missing', () => {
+    writeProject('no-status.md', `---
+---
+
+# No Status
+
+## Tasks`);
+
+    const { listProjects } = requireFresh();
+    const results = listProjects();
+    assert.equal(results.length, 1);
+    assert.equal(results[0].status, 'active');
+  });
+
+  it('skips _template.md', () => {
+    writeProject('_template.md', `---
+status: active
+---
+
+# Template`);
+
+    const { listProjects } = requireFresh();
+    const results = listProjects();
+    assert.equal(results.length, 0);
+  });
+});
+
 describe('parseChangelog', () => {
   it('filters changelog lines by regex', () => {
     writeProject('cl.md', `---

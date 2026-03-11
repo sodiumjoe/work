@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SessionStart hook: injects project context into Claude sessions.
-# Reads CLAUDE_PROJECT and CLAUDE_TASK env vars set by the Neovim task picker.
+# Reads CLAUDE_PROJECT env var set by the Neovim project picker.
 
 if [ -z "$CLAUDE_PROJECT" ]; then
   exit 0
@@ -14,14 +14,9 @@ fi
 
 CONTENT=$(cat "$PROJECT_FILE")
 
-TASK_LINE=""
-if [ -n "$CLAUDE_TASK" ]; then
-  TASK_LINE="Task: $CLAUDE_TASK"$'\n'
-fi
-
 CONTEXT="## Session Context
 
-${TASK_LINE}Project: $CLAUDE_PROJECT
+Project: $CLAUDE_PROJECT
 Project file: $PROJECT_FILE
 
 ### Project

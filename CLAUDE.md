@@ -45,25 +45,6 @@ Called automatically per CLAUDE.md instructions before executing any plan. Valid
 
 Commands are invoked as `/command-name` by the user or via `Skill` tool.
 
-### /log
-
-Check off a completed task and log it to the daily note.
-
-**Definition:** `work/commands/log.md`
-
-**YAML frontmatter:**
-```yaml
----
-description: Check off a completed task and log it to the daily note
-allowed-tools: Bash(work:*), Read
----
-```
-
-**Steps:**
-1. Identify source file (project or plan) from session context
-2. Complete task: `work complete <file> "<description>"`
-3. Regenerate tasks view: `work gather`
-
 ### /note
 
 Append a freeform note, link, or discovery to today's daily note.
@@ -130,27 +111,31 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash(date:*), Bash(mkdir:*), Bash(
 
 ### SessionStart
 
-Injects project context when starting a Claude session scoped to a task.
+Injects project context when starting a Claude session scoped to a project.
 
 **Hook script:** `work/hooks/scripts/session-project.sh`
 
 **Configuration:** `work/hooks/hooks.json`
 
 **Mechanism:**
-1. Neovim keybinds (`<leader>ap`, `<leader>aP`) set environment variables:
-   - `CLAUDE_PROJECT`: path to project file
-   - `CLAUDE_TASK`: task description
-2. SessionStart hook reads these env vars on session initialization
+1. Neovim keybinds (`<leader>ap`, `<leader>aP`) set `CLAUDE_PROJECT` environment variable
+2. SessionStart hook reads the env var on session initialization
 3. Project file contents are injected as context
 
 **Neovim integration:**
 
 | Keybind | Description |
 |---------|-------------|
-| `<leader>ap` | Pick task from queue, start scoped session |
+| `<leader>ap` | Pick project, start scoped session |
 | `<leader>aP` | Create new project, start scoped session |
+| `<leader>at` | Add task to project (no session) |
+| `<leader>sP` | Browse project files (no session) |
+| `<leader>st` | Task state picker (context-aware: current project buffer, or pick project first) |
+| `<leader>sT` | Task state picker (all active/evergreen projects) |
 
-Both workflows destroy the existing session and start fresh with project context.
+`<leader>ap` and `<leader>aP` destroy the existing session and start fresh with project context.
+
+`<leader>st` and `<leader>sT` open a task picker where Tab cycles checkbox state (`[ ]` → `[/]` → `[x]` → `[ ]`) and Enter opens the file at the task line.
 
 ## Creating Agents
 
@@ -178,7 +163,7 @@ Place agent files in `work/agents/`. The plugin loader discovers them automatica
 
 ## Creating Commands
 
-Reference `work/commands/log.md` as template.
+Reference `work/commands/note.md` as template.
 
 **Required YAML fields:**
 - `description`: one-sentence summary of command purpose

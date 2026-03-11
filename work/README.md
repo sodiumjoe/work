@@ -6,9 +6,11 @@ Daily work tracking with Obsidian integration for Claude Code. Manages daily not
 
 ### Starting work
 
-`<leader>ap` opens a picker showing all open tasks across projects and plans. Select one to start a scoped Claude Code session with the project file and task description injected as context. The tmux window label updates to the task name.
+`<leader>ap` opens a picker showing active and evergreen projects. Select one to open its file and start a scoped Claude Code session with the project file injected as context. The tmux window label updates to the project slug.
 
 `<leader>aP` creates a new project from scratch — prompts for a title, generates the project file, opens it in a buffer, and starts a session scoped to it.
+
+`<leader>sP` opens a file picker for all project files (sorted by modification time). Opens the selected file without starting a session.
 
 ### During a session
 
@@ -105,8 +107,8 @@ Commands:
   ensure                       Create today's daily note if missing
   carry                        Carry forward open queue items from previous day
   sync [--apply]               Find unlogged changelog completions
-  scan                         Scan plans/projects for open changelog items (TSV)
-  inject                       Add scanned items to queue (reads stdin or runs scan)
+  list-projects                List active/evergreen projects (TSV)
+  inject                       Rebuild daily note tasks view from scan
   gather                       Run ensure + carry + sync + scan + inject
   tick                         Hourly maintenance: gather + sync + conditional wrap
   wrap                         End-of-day: sync + Claude summary + complete projects
@@ -134,10 +136,12 @@ Task picking and project creation happen through Neovim keybinds (defined in `~/
 
 | Keybind | Description |
 |---------|-------------|
-| `<leader>ap` | Pick a task from the work queue, start an agentic session with project context |
+| `<leader>ap` | Pick a project, open project file, start an agentic session with project context |
 | `<leader>aP` | Create a new project (prompts for title), open project file, start agentic session |
+| `<leader>at` | Add a task to a project (prompts for description, then project picker) |
+| `<leader>sP` | Browse project files (file picker, no session) |
 
-Both workflows destroy the existing agentic session, set `CLAUDE_PROJECT` and `CLAUDE_TASK` env vars, and start a fresh session. The `session-project` hook injects the project file contents as context.
+Both `<leader>ap` and `<leader>aP` destroy the existing agentic session, set `CLAUDE_PROJECT` env var, and start a fresh session. The `session-project` hook injects the project file contents as context.
 
 ## Slash commands
 

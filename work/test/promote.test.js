@@ -171,4 +171,55 @@ status: active
     const promoted = promote('2026-03-10', { quiet: true });
     assert.equal(promoted.length, 2);
   });
+
+  it('preserves blank line before next section heading', () => {
+    writeProject('ws.md', `---
+status: active
+---
+
+# WS
+
+## Tasks
+- [x] Done
+
+## Changelog
+
+## Notes`);
+
+    const { promote } = requireFresh();
+    promote('2026-03-10', { quiet: true });
+
+    const result = fs.readFileSync(path.join(tmpDir, 'projects', 'ws.md'), 'utf-8');
+    assert.ok(result.includes('Done task') === false || result.includes('\n\n## Notes'));
+    assert.ok(!result.includes('✅ 2026-03-10\n## Notes'), 'missing blank line before ## Notes');
+  });
+
+  it('does not insert blank line in middle of changelog', () => {
+    writeProject('existing.md', `---
+status: active
+---
+
+# Existing
+
+## Tasks
+- [x] New item
+
+## Changelog
+- [x] Old item ✅ 2026-03-01
+
+## Notes`);
+
+    const { promote } = requireFresh();
+    promote('2026-03-10', { quiet: true });
+
+    const result = fs.readFileSync(path.join(tmpDir, 'projects', 'existing.md'), 'utf-8');
+    const { extractSection } = require('../lib/markdown.js');
+    const changelog = extractSection(result, 'Changelog');
+    const nonEmpty = changelog.filter(l => l.trim() !== '');
+    assert.equal(nonEmpty.length, 2);
+    const trimmed = changelog.slice();
+    while (trimmed.length > 0 && trimmed[trimmed.length - 1].trim() === '') trimmed.pop();
+    const blankLines = trimmed.filter(l => l.trim() === '');
+    assert.equal(blankLines.length, 0, 'should have no blank lines between changelog items');
+  });
 });

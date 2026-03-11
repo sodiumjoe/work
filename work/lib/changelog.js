@@ -41,11 +41,9 @@ function checkOff(filePath, description, dateStr) {
           }
         }
       }
-      const insertAt = changelogRange.end;
       const entry = `- [x] ${description} ✅ ${dateStr}`;
-      lines.splice(insertAt, 0, entry);
       action = 'appended';
-      return lines.join('\n');
+      return insertAtEndOfSection(lines.join('\n'), 'Changelog', [entry]);
     }
     throw new Error('unexpected: Changelog section should exist after creation');
   });

@@ -125,10 +125,28 @@ function archiveProject(slug) {
   }
 }
 
+function listProjects() {
+  if (!fs.existsSync(PROJECT_DIR)) return [];
+  const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md');
+  const results = [];
+  for (const file of files) {
+    const filePath = path.join(PROJECT_DIR, file);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const fm = parseFrontmatter(content);
+    const status = fm.status || 'active';
+    if (status !== 'active' && status !== 'evergreen') continue;
+    const slug = file.replace('.md', '');
+    const title = getTitle(content) || slug;
+    results.push({ slug, title, status });
+  }
+  return results;
+}
+
 module.exports = {
   createProject,
   resolveProject,
   parseChangelog,
   completeProjects,
   archiveProject,
+  listProjects,
 };

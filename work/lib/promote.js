@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { extractSection, findSectionLineRange, parseFrontmatter } = require('./markdown.js');
+const { extractSection, findSectionLineRange, insertAtEndOfSection, parseFrontmatter } = require('./markdown.js');
 const { atomicRewrite } = require('./atomic.js');
 const { PROJECT_DIR } = require('./paths.js');
 
@@ -39,11 +39,7 @@ function promote(dateStr, { quiet } = {}) {
       for (let i = toRemove.length - 1; i >= 0; i--) {
         lines.splice(toRemove[i], 1);
       }
-      const newChangelogRange = findSectionLineRange(lines, 'Changelog');
-      if (!newChangelogRange) return lines.join('\n');
-      const insertAt = newChangelogRange.end;
-      lines.splice(insertAt, 0, ...toInsert);
-      return lines.join('\n');
+      return insertAtEndOfSection(lines.join('\n'), 'Changelog', toInsert);
     });
   }
   if (promoted.length > 0) {

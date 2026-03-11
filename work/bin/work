@@ -6,8 +6,8 @@ const path = require('node:path');
 const LIB = path.join(__dirname, '..', 'lib');
 const { ensure, logSyncEntries, inject } = require(path.join(LIB, 'daily.js'));
 const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
-const { scanOpenItems, formatScanTSV, syncCheck } = require(path.join(LIB, 'scan.js'));
-const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject } = require(path.join(LIB, 'project.js'));
+const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState } = require(path.join(LIB, 'scan.js'));
+const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, listProjects } = require(path.join(LIB, 'project.js'));
 const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
 const { extractSection, insertAtEndOfSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
 const { checkOff, appendLog } = require(path.join(LIB, 'changelog.js'));
@@ -140,10 +140,11 @@ const commands = {
     }
   },
 
-  scan() {
-    const results = scanOpenItems();
-    const tsv = formatScanTSV(results);
-    if (tsv) process.stdout.write(tsv + '\n');
+  'list-projects'() {
+    const results = listProjects();
+    for (const r of results) {
+      process.stdout.write(`${r.slug}\t${r.title}\t${r.status}\n`);
+    }
   },
 
   inject() {
@@ -240,6 +241,23 @@ const commands = {
       throw new Error('usage: work append-log <description>');
     }
     appendLog(dateStr, positional[0], opts['source-type'], opts['source-slug'], opts['source-title']);
+  },
+
+  'list-tasks'() {
+    const { positional } = parseOpts(args.slice(1));
+    const results = listTasks(positional[0]);
+    for (const r of results) {
+      process.stdout.write(`${r.file}\t${r.line}\t${r.state}\t${r.title}\t${r.description}\n`);
+    }
+  },
+
+  'set-task-state'() {
+    const { opts, positional } = parseOpts(args.slice(1));
+    if (positional.length < 3) {
+      throw new Error('usage: work set-task-state <file> <line> <state>');
+    }
+    const dateStr = getDate(opts);
+    setTaskState(positional[0], parseInt(positional[1], 10), positional[2], dateStr);
   },
 
   'append-task'() {
@@ -413,12 +431,14 @@ Commands:
   ensure                       Create today's daily note if missing
   promote                      Move checked-off tasks to changelog
   sync [--apply]               Find unlogged changelog completions
-  scan                         Scan projects/plans for open tasks (TSV)
+  list-projects                List active/evergreen projects (TSV)
   inject                       Rebuild daily note tasks view from scan
   gather                       Run ensure + promote + sync + scan + inject
   tick                         Hourly maintenance: gather + sync + conditional wrap
   wrap                         End-of-day: sync + Claude summary + complete projects
   summary                      Show completed and open items
+  list-tasks [file]            List open/in-progress tasks (TSV)
+  set-task-state <f> <ln> <s>  Set task checkbox state (open|in-progress|done)
   complete <file> <desc>       Check off task and log to daily note
   create-project <slug> <title> Create a new project file
   archive-project <slug>       Archive project and associated plans

@@ -166,6 +166,133 @@ status: active
   });
 });
 
+describe('work list-projects', () => {
+  it('lists active and evergreen projects as TSV', () => {
+    writeProject('alpha.md', `---
+status: active
+---
+
+# Alpha
+
+## Tasks`);
+
+    writeProject('beta.md', `---
+status: evergreen
+---
+
+# Beta
+
+## Tasks`);
+
+    writeProject('done.md', `---
+status: completed
+---
+
+# Done
+
+## Changelog
+- [x] Item ✅ 2026-03-01`);
+
+    const output = runWork('list-projects');
+    assert.ok(output.includes('alpha\tAlpha\tactive'));
+    assert.ok(output.includes('beta\tBeta\tevergreen'));
+    assert.ok(!output.includes('done'));
+  });
+
+  it('outputs nothing for empty projects dir', () => {
+    const output = runWork('list-projects');
+    assert.equal(output.trim(), '');
+  });
+});
+
+describe('work list-tasks', () => {
+  it('lists open tasks with line numbers', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] First task
+- [/] Second task
+- [x] Done task
+
+## Changelog`);
+
+    const output = runWork('list-tasks');
+    const lines = output.trim().split('\n');
+    assert.equal(lines.length, 2);
+    assert.ok(lines[0].includes('\t8\t \tProj\tFirst task'));
+    assert.ok(lines[1].includes('\t9\t/\tProj\tSecond task'));
+  });
+
+  it('lists tasks from specific file', () => {
+    writeProject('proj.md', `---
+status: completed
+---
+
+# Proj
+
+## Tasks
+- [ ] Leftover
+
+## Changelog`);
+
+    const output = runWork('list-tasks', path.join(tmpDir, 'projects', 'proj.md'));
+    assert.ok(output.includes('Leftover'));
+  });
+
+  it('outputs nothing for no tasks', () => {
+    const output = runWork('list-tasks');
+    assert.equal(output.trim(), '');
+  });
+});
+
+describe('work set-task-state', () => {
+  it('sets task to in-progress', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] My task
+
+## Changelog`);
+
+    const filePath = path.join(tmpDir, 'projects', 'proj.md');
+    runWork('set-task-state', filePath, '8', 'in-progress');
+
+    const result = fs.readFileSync(filePath, 'utf-8');
+    assert.ok(result.includes('- [/] My task'));
+  });
+
+  it('sets task to done with date', () => {
+    writeProject('proj.md', `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [/] My task
+
+## Changelog`);
+
+    const filePath = path.join(tmpDir, 'projects', 'proj.md');
+    runWork('set-task-state', filePath, '8', 'done', '--date=2026-03-10');
+
+    const result = fs.readFileSync(filePath, 'utf-8');
+    assert.ok(result.includes('- [x] My task ✅ 2026-03-10'));
+  });
+
+  it('rejects missing arguments', () => {
+    assert.throws(() => runWork('set-task-state', 'file', '1'), /usage/);
+  });
+});
+
 describe('work help', () => {
   it('prints help text', () => {
     const output = runWork('help');
