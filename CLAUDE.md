@@ -137,6 +137,21 @@ Injects project context when starting a Claude session scoped to a project.
 
 `<leader>st` and `<leader>sT` open a task picker where Tab cycles checkbox state (`[ ]` → `[/]` → `[x]` → `[ ]`) and Enter opens the file at the task line.
 
+## Scripts
+
+Shell scripts in `work/scripts/nvim-remote/` for controlling the running Neovim instance. Both exit silently when `NVIM`/`NVIM_SOCKET_PATH` is unset (safe to call unconditionally).
+
+| Script | Purpose | Invocation |
+|--------|---------|------------|
+| `nvim-lua` | Execute Lua in running Neovim | `nvim-lua '<lua-code>'` |
+| `nvim-open` | Open file in Neovim | `nvim-open [--window <id>] <file>` |
+
+To open a file in the editor window:
+```bash
+win=$(nvim-lua "return require('sodium.utils').editor_window()")
+[[ -n "$win" ]] && nvim-open --window "$win" '<absolute-path>'
+```
+
 ## Creating Agents
 
 Reference `work/agents/plan-reviewer.md` as template.
@@ -223,6 +238,10 @@ When adding or modifying agents or commands, update this file with:
 - Brief description of purpose and constraints
 
 Keep the Overview section synchronized with the set of available primitives.
+
+## External Files
+
+Neovim configuration: `~/.dotfiles/neovim/`. Keybinds for `<leader>ap`, `<leader>at`, `<leader>st`, etc. are defined in `~/.dotfiles/neovim/lua/sodium/plugins/agentic.lua`.
 
 ## Committing Changes
 
