@@ -144,6 +144,36 @@ status: completed
     assert.equal(promoted.length, 0);
   });
 
+  it('promotes checked tasks in evergreen projects', () => {
+    writeProject('evergreen.md', `---
+status: evergreen
+---
+
+# Evergreen
+
+## Tasks
+- [x] Done task
+- [ ] Open task
+
+## Changelog
+
+## Notes`);
+
+    const { promote } = requireFresh();
+    const promoted = promote('2026-03-12', { quiet: true });
+
+    assert.equal(promoted.length, 1);
+    assert.ok(promoted[0].text.includes('Done task'));
+
+    const result = fs.readFileSync(path.join(tmpDir, 'projects', 'evergreen.md'), 'utf-8');
+    const { extractSection } = require('../lib/markdown.js');
+    const tasks = extractSection(result, 'Tasks');
+    const changelog = extractSection(result, 'Changelog');
+    assert.ok(!tasks.some(l => l.includes('Done task')));
+    assert.ok(tasks.some(l => l.includes('Open task')));
+    assert.ok(changelog.some(l => l.includes('Done task') && l.includes('✅ 2026-03-12')));
+  });
+
   it('returns empty array when no projects exist', () => {
     fs.rmSync(path.join(tmpDir, 'projects'), { recursive: true });
     const { promote } = requireFresh();

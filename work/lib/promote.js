@@ -13,7 +13,7 @@ function promote(dateStr, { quiet } = {}) {
     const filePath = path.join(PROJECT_DIR, f);
     const content = fs.readFileSync(filePath, 'utf-8');
     const fm = parseFrontmatter(content);
-    if (fm.status !== 'active') continue;
+    if (fm.status !== 'active' && fm.status !== 'evergreen') continue;
     const tasks = extractSection(content, 'Tasks');
     const completed = tasks.filter(l => /^- \[x\] /.test(l));
     if (completed.length === 0) continue;
