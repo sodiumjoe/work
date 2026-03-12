@@ -35,7 +35,7 @@ function getDate(opts) {
   return opts.date || todayStr();
 }
 
-const LOG_PATH = process.env.WORK_LOG_PATH || path.join(os.homedir(), 'Library', 'Logs', 'work-tick.log');
+const LOG_PATH = process.env.WORK_LOG_PATH || '/tmp/work-tick.log';
 const LOG_ROTATE_THRESHOLD = 1000;
 
 function rotateLog(dateStr) {
