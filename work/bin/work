@@ -4,7 +4,8 @@ const os = require('node:os');
 const path = require('node:path');
 
 const LIB = path.join(__dirname, '..', 'lib');
-const { ensure, logSyncEntries, inject } = require(path.join(LIB, 'daily.js'));
+const { ensure, logSyncEntries, inject, injectReviews } = require(path.join(LIB, 'daily.js'));
+const { fetchReviews } = require(path.join(LIB, 'reviews.js'));
 const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
 const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState, scanOrphanedPlans } = require(path.join(LIB, 'scan.js'));
 const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, archivePlan, listProjects } = require(path.join(LIB, 'project.js'));
@@ -70,6 +71,12 @@ function doGather(dateStr, quiet) {
   } catch (e) { console.error('FAIL: scan'); errors.push(`scan: ${e.message}`); }
   log('--- inject ---');
   try { inject(dateStr, scanResults, q); } catch (e) { console.error('FAIL: inject'); errors.push(`inject: ${e.message}`); }
+  log('--- reviews ---');
+  try {
+    const { reviews, error } = fetchReviews();
+    if (error) errors.push(`reviews: ${error}`);
+    injectReviews(dateStr, reviews, q);
+  } catch (e) { console.error('FAIL: reviews'); errors.push(`reviews: ${e.message}`); }
   if (errors.length) process.exitCode = 1;
   return errors;
 }

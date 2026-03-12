@@ -46,6 +46,7 @@ function runWork(...args) {
       WORK_VAULT: tmpDir,
       XDG_CONFIG_HOME: path.join(tmpDir, 'config'),
       WORK_TEST_HOUR: '10',
+      WORK_SKIP_REVIEWS: '1',
     },
     encoding: 'utf-8',
     timeout: 10000,

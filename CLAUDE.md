@@ -216,6 +216,7 @@ Test files live in `work/test/`. Each library file has a corresponding test file
 | `project.js` | `project.test.js` |
 | `promote.js` | `promote.test.js` |
 | `queue.js` | `queue.test.js` |
+| `reviews.js` | `reviews.test.js` |
 | `scan.js` | `scan.test.js` |
 
 Integration tests for CLI commands and multi-module flows:

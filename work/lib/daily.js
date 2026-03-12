@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { VAULT_ROOT, notePath, todayStr, PROJECT_DIR } = require('./paths.js');
-const { parse, serialize, findSection, appendToSection, replaceSection, extractSection, getTitle } = require('./markdown.js');
+const { parse, serialize, findSection, appendToSection, replaceSection, insertSectionBefore, extractSection, getTitle } = require('./markdown.js');
 const { atomicRewrite } = require('./atomic.js');
 
 function ensure(dateStr, { quiet } = {}) {
@@ -140,8 +140,27 @@ function groupByProject(results) {
   return sorted;
 }
 
+function injectReviews(dateStr, reviews, { quiet } = {}) {
+  const log = quiet ? () => {} : console.log.bind(console);
+  const dailyNote = notePath(dateStr);
+  if (!fs.existsSync(dailyNote)) return;
+  const { formatReviews } = require('./reviews.js');
+  const lines = formatReviews(reviews);
+  atomicRewrite(dailyNote, c => {
+    const doc = parse(c);
+    if (findSection(doc, 'Reviews')) {
+      replaceSection(doc, 'Reviews', lines);
+    } else {
+      insertSectionBefore(doc, 'Tasks', 'Reviews', lines);
+    }
+    return serialize(doc);
+  });
+  log(`injected ${reviews.length} review(s) into daily note`);
+}
+
 module.exports = {
   ensure,
   logSyncEntries,
   inject,
+  injectReviews,
 };
