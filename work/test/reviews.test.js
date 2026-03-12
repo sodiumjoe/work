@@ -66,10 +66,9 @@ describe('formatReviews', () => {
       { title: 'Add feature', url: 'https://gh.example.com/org/repo/pull/99', author: 'bob', repo: 'org/repo', number: 99 },
     ];
     const lines = formatReviews(reviews);
-    assert.equal(lines[0], '<!-- auto-generated from GH, do not edit -->');
-    assert.equal(lines[1], '- [org/repo#42](https://gh.example.com/org/repo/pull/42) — Fix bug (alice)');
-    assert.equal(lines[2], '- [org/repo#99](https://gh.example.com/org/repo/pull/99) — Add feature (bob)');
-    assert.equal(lines.length, 3);
+    assert.equal(lines[0], '- [org/repo#42](https://gh.example.com/org/repo/pull/42) — Fix bug (alice)');
+    assert.equal(lines[1], '- [org/repo#99](https://gh.example.com/org/repo/pull/99) — Add feature (bob)');
+    assert.equal(lines.length, 2);
   });
 });
 

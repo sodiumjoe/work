@@ -79,7 +79,7 @@ function inject(dateStr, scanResults, { quiet } = {}) {
     return;
   }
   const grouped = groupByProject(scanResults);
-  const lines = ['<!-- auto-generated from project files, do not edit -->'];
+  const lines = [];
   for (const [projectSlug, items] of grouped) {
     let title = projectSlug;
     if (projectSlug === '_unassigned') {

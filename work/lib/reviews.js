@@ -34,7 +34,7 @@ function fetchReviews() {
 
 function formatReviews(reviews) {
   if (reviews.length === 0) return [];
-  const lines = ['<!-- auto-generated from GH, do not edit -->'];
+  const lines = [];
   for (const r of reviews) {
     lines.push(`- [${r.repo}#${r.number}](${r.url}) — ${r.title} (${r.author})`);
   }
