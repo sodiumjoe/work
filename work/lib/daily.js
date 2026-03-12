@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { VAULT_ROOT, notePath, todayStr, PROJECT_DIR } = require('./paths.js');
-const { extractSection, findSectionLineRange, insertAtEndOfSection, getTitle } = require('./markdown.js');
+const { parse, serialize, findSection, appendToSection, replaceSection, extractSection, getTitle } = require('./markdown.js');
 const { atomicRewrite } = require('./atomic.js');
 
 function ensure(dateStr, { quiet } = {}) {
@@ -57,7 +57,11 @@ function logSyncEntries(dateStr, entries, dryRun, { quiet } = {}) {
   if (!fs.existsSync(dailyNote)) {
     throw new Error('no daily note found');
   }
-  atomicRewrite(dailyNote, content => insertAtEndOfSection(content, 'Log', formatted));
+  atomicRewrite(dailyNote, content => {
+    const doc = parse(content);
+    appendToSection(doc, 'Log', formatted);
+    return serialize(doc);
+  });
   log(`logged ${formatted.length} sync entry/entries`);
 }
 
@@ -67,7 +71,11 @@ function inject(dateStr, scanResults, { quiet } = {}) {
   if (!fs.existsSync(dailyNote)) return;
   if (!scanResults || scanResults.length === 0) {
     log('no tasks to inject');
-    atomicRewrite(dailyNote, c => replaceTasksSection(c, []));
+    atomicRewrite(dailyNote, c => {
+      const doc = parse(c);
+      replaceSection(doc, 'Tasks', []);
+      return serialize(doc);
+    });
     return;
   }
   const grouped = groupByProject(scanResults);
@@ -85,13 +93,16 @@ function inject(dateStr, scanResults, { quiet } = {}) {
       lines.push(`- **[[projects/${projectSlug}#Tasks|${title}]]**`);
     }
     for (const item of items) {
-      // Skip empty placeholder items (used for evergreen projects with no tasks)
       if (item.itemText === '') continue;
       const suffix = item.state === '/' ? ' (in progress)' : '';
       lines.push(`  - ${item.itemText}${suffix}`);
     }
   }
-  atomicRewrite(dailyNote, c => replaceTasksSection(c, lines));
+  atomicRewrite(dailyNote, c => {
+    const doc = parse(c);
+    replaceSection(doc, 'Tasks', lines);
+    return serialize(doc);
+  });
   const count = scanResults.length;
   log(`injected ${count} task(s) into daily note`);
 }
@@ -127,17 +138,6 @@ function groupByProject(results) {
     sorted.set(k, v);
   }
   return sorted;
-}
-
-function replaceTasksSection(content, newLines) {
-  const lines = content.split('\n');
-  const range = findSectionLineRange(lines, 'Tasks');
-  if (!range) return content;
-  const before = lines.slice(0, range.start + 1);
-  const after = lines.slice(range.end);
-  const separator = after.length > 0 && /^## /.test(after[0]) ? [''] : [];
-  const result = [...before, ...newLines, ...separator, ...after];
-  return result.join('\n');
 }
 
 module.exports = {

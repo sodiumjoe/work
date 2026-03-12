@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const { notePath } = require('./paths.js');
-const { extractSection, insertAtEndOfSection, findSectionLineRange } = require('./markdown.js');
+const { parse, serialize, findSection, appendToSection, extractSection } = require('./markdown.js');
 const { atomicRewrite } = require('./atomic.js');
 
 function enqueue(dateStr, section, items) {
@@ -12,10 +12,12 @@ function enqueue(dateStr, section, items) {
   if (toAdd.length === 0) return 0;
   const lines = toAdd.map(item => `- [ ] ${item.label} <!-- key:${item.key} -->`);
   atomicRewrite(np, c => {
-    if (!new RegExp(`^## ${section}\\s*$`, 'm').test(c)) {
-      c = c.trimEnd() + `\n\n## ${section}\n`;
+    const doc = parse(c);
+    if (!findSection(doc, section)) {
+      doc.sections.push({ name: section, lines: [] });
     }
-    return insertAtEndOfSection(c, section, lines);
+    appendToSection(doc, section, lines);
+    return serialize(doc);
   });
   return toAdd.length;
 }

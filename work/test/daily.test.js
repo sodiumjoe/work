@@ -254,17 +254,23 @@ status: evergreen
   });
 });
 
-function assertSingleBlankBetweenSections(content) {
+function assertSectionWhitespace(content) {
   const lines = content.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    if (/^## /.test(lines[i]) && i > 0) {
+    if (!/^## /.test(lines[i])) continue;
+    if (i > 0) {
       const prev = lines[i - 1];
       const prevPrev = i >= 2 ? lines[i - 2] : null;
-      if (prev === '---') continue;
-      assert.equal(prev, '', `line ${i}: expected blank line before "${lines[i]}", got "${prev}"`);
-      if (prevPrev !== null && prevPrev !== '---') {
-        assert.notEqual(prevPrev, '', `line ${i}: double blank line before "${lines[i]}"`);
+      if (prev !== '---') {
+        assert.equal(prev, '', `line ${i}: expected blank line before "${lines[i]}", got "${prev}"`);
+        if (prevPrev !== null && prevPrev !== '---') {
+          assert.notEqual(prevPrev, '', `line ${i}: double blank line before "${lines[i]}"`);
+        }
       }
+    }
+    const next = i + 1 < lines.length ? lines[i + 1] : null;
+    if (next !== null && next.trim() !== '' && !/^## /.test(next)) {
+      assert.equal(next, '', `line ${i}: expected blank line after "${lines[i]}", got "${next}"`);
     }
   }
 }
@@ -273,7 +279,7 @@ describe('section whitespace', () => {
   it('ensure creates note with single blank between sections', () => {
     const { ensure } = requireFresh();
     ensure('2026-03-10', { quiet: true });
-    assertSingleBlankBetweenSections(readDailyNote('2026-03-10'));
+    assertSectionWhitespace(readDailyNote('2026-03-10'));
   });
 
   it('inject with content preserves single blank before Log', () => {
@@ -295,7 +301,7 @@ status: active
       { projectSlug: 'proj', itemText: 'Task', state: ' ', sourceType: 'project', title: 'Proj', evergreen: false },
     ], { quiet: true });
 
-    assertSingleBlankBetweenSections(readDailyNote('2026-03-10'));
+    assertSectionWhitespace(readDailyNote('2026-03-10'));
   });
 
   it('inject with empty results preserves single blank before Log', () => {
@@ -303,7 +309,7 @@ status: active
     const { inject } = requireFresh();
     inject('2026-03-10', [], { quiet: true });
 
-    assertSingleBlankBetweenSections(readDailyNote('2026-03-10'));
+    assertSectionWhitespace(readDailyNote('2026-03-10'));
   });
 
   it('logSyncEntries maintains single blank between sections', () => {
@@ -313,7 +319,7 @@ status: active
       { filename: 'proj.md', title: 'Proj', itemText: 'Did work', sourceType: 'project' },
     ], false, { quiet: true });
 
-    assertSingleBlankBetweenSections(readDailyNote('2026-03-10'));
+    assertSectionWhitespace(readDailyNote('2026-03-10'));
   });
 
   it('appendLog maintains single blank between sections', () => {
@@ -321,7 +327,7 @@ status: active
     const { appendLog } = requireFresh('changelog.js');
     appendLog('2026-03-10', 'Did something', 'project', 'proj', 'Proj');
 
-    assertSingleBlankBetweenSections(readDailyNote('2026-03-10'));
+    assertSectionWhitespace(readDailyNote('2026-03-10'));
   });
 
   it('appendLog to empty Log section maintains whitespace', () => {
@@ -340,7 +346,7 @@ status: active
     appendLog('2026-03-10', 'Second', 'project', 'proj', 'Proj');
     appendLog('2026-03-10', 'Third', 'project', 'proj', 'Proj');
 
-    assertSingleBlankBetweenSections(readDailyNote('2026-03-10'));
+    assertSectionWhitespace(readDailyNote('2026-03-10'));
   });
 
   it('inject then appendLog maintains consistent whitespace', () => {
@@ -365,6 +371,6 @@ status: active
     const { appendLog } = requireFresh('changelog.js');
     appendLog('2026-03-10', 'Done', 'project', 'proj', 'Proj');
 
-    assertSingleBlankBetweenSections(readDailyNote('2026-03-10'));
+    assertSectionWhitespace(readDailyNote('2026-03-10'));
   });
 });

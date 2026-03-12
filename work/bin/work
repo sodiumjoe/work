@@ -10,7 +10,7 @@ const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState, scanOr
 const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, archivePlan, listProjects } = require(path.join(LIB, 'project.js'));
 const { writeWeeklySummary } = require(path.join(LIB, 'summary.js'));
 const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
-const { extractSection, insertAtEndOfSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
+const { parse, serialize, appendToSection, extractSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
 const { checkOff, appendLog } = require(path.join(LIB, 'changelog.js'));
 const { promote } = require(path.join(LIB, 'promote.js'));
 
@@ -310,8 +310,9 @@ const commands = {
     const filePath = positional[0];
     const description = positional[1];
     const content = fs.readFileSync(filePath, 'utf-8');
-    const updated = insertAtEndOfSection(content, 'Tasks', [`- [ ] ${description}`]);
-    fs.writeFileSync(filePath, updated, 'utf-8');
+    const doc = parse(content);
+    appendToSection(doc, 'Tasks', [`- [ ] ${description}`]);
+    fs.writeFileSync(filePath, serialize(doc), 'utf-8');
   },
 
   complete() {

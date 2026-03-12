@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { extractSection, findSectionLineRange, insertAtEndOfSection, parseFrontmatter } = require('./markdown.js');
+const { parse, serialize, findSection, appendToSection, mutateSection, extractSection, parseFrontmatter } = require('./markdown.js');
 const { atomicRewrite } = require('./atomic.js');
 const { PROJECT_DIR } = require('./paths.js');
 
@@ -18,28 +18,26 @@ function promote(dateStr, { quiet } = {}) {
     const completed = tasks.filter(l => /^- \[x\] /.test(l));
     if (completed.length === 0) continue;
     atomicRewrite(filePath, c => {
-      const lines = c.split('\n');
-      const tasksRange = findSectionLineRange(lines, 'Tasks');
-      const changelogRange = findSectionLineRange(lines, 'Changelog');
-      if (!tasksRange || !changelogRange) return c;
-      const toRemove = [];
+      const doc = parse(c);
+      if (!findSection(doc, 'Tasks') || !findSection(doc, 'Changelog')) return c;
       const toInsert = [];
-      for (let i = tasksRange.start + 1; i < tasksRange.end; i++) {
-        if (/^- \[x\] /.test(lines[i])) {
-          let text = lines[i].replace(/^- \[x\] /, '');
-          const hasDate = / ✅ \d{4}-\d{2}-\d{2}$/.test(text);
-          if (!hasDate) {
-            text = `${text} ✅ ${dateStr}`;
+      mutateSection(doc, 'Tasks', lines => {
+        return lines.filter(line => {
+          if (/^- \[x\] /.test(line)) {
+            let text = line.replace(/^- \[x\] /, '');
+            const hasDate = / ✅ \d{4}-\d{2}-\d{2}$/.test(text);
+            if (!hasDate) {
+              text = `${text} ✅ ${dateStr}`;
+            }
+            toInsert.push(`- [x] ${text}`);
+            promoted.push({ file: f, text });
+            return false;
           }
-          toInsert.push(`- [x] ${text}`);
-          toRemove.push(i);
-          promoted.push({ file: f, text });
-        }
-      }
-      for (let i = toRemove.length - 1; i >= 0; i--) {
-        lines.splice(toRemove[i], 1);
-      }
-      return insertAtEndOfSection(lines.join('\n'), 'Changelog', toInsert);
+          return true;
+        });
+      });
+      appendToSection(doc, 'Changelog', toInsert);
+      return serialize(doc);
     });
   }
   if (promoted.length > 0) {

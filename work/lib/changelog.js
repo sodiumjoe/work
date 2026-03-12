@@ -1,5 +1,5 @@
 const fs = require('node:fs');
-const { extractSection, findSectionLineRange, insertAtEndOfSection } = require('./markdown.js');
+const { parse, serialize, findSection, appendToSection, mutateSection } = require('./markdown.js');
 const { atomicRewrite } = require('./atomic.js');
 const { notePath } = require('./paths.js');
 
@@ -9,43 +9,49 @@ function checkOff(filePath, description, dateStr) {
   }
   let action;
   atomicRewrite(filePath, content => {
-    const lines = content.split('\n');
-    const tasksRange = findSectionLineRange(lines, 'Tasks');
-    if (tasksRange) {
-      for (let i = tasksRange.start + 1; i < tasksRange.end; i++) {
+    const doc = parse(content);
+
+    let found = false;
+    mutateSection(doc, 'Tasks', lines => {
+      for (let i = 0; i < lines.length; i++) {
         if (/^- \[[ /]\]/.test(lines[i])) {
           const text = lines[i].replace(/^- \[.\] /, '');
           if (text === description || text.includes(description)) {
             lines[i] = `- [x] ${text}`;
+            found = true;
             action = 'checked';
-            return lines.join('\n');
+            break;
           }
         }
       }
+      return lines;
+    });
+    if (found) return serialize(doc);
+
+    if (!findSection(doc, 'Changelog')) {
+      doc.sections.push({ name: 'Changelog', lines: [] });
     }
-    let changelogRange = findSectionLineRange(lines, 'Changelog');
-    if (!changelogRange) {
-      const lastNonEmptyIdx = lines.findLastIndex(l => l.trim() !== '');
-      const insertAt = lastNonEmptyIdx >= 0 ? lastNonEmptyIdx + 1 : lines.length;
-      lines.splice(insertAt, 0, '', '## Changelog', '');
-      changelogRange = findSectionLineRange(lines, 'Changelog');
-    }
-    if (changelogRange) {
-      for (let i = changelogRange.start + 1; i < changelogRange.end; i++) {
+
+    mutateSection(doc, 'Changelog', lines => {
+      for (let i = 0; i < lines.length; i++) {
         if (/^- \[ \]/.test(lines[i])) {
           const text = lines[i].replace(/^- \[ \] /, '');
           if (text === description || text.includes(description)) {
             lines[i] = `- [x] ${text} ✅ ${dateStr}`;
+            found = true;
             action = 'checked';
-            return lines.join('\n');
+            break;
           }
         }
       }
-      const entry = `- [x] ${description} ✅ ${dateStr}`;
-      action = 'appended';
-      return insertAtEndOfSection(lines.join('\n'), 'Changelog', [entry]);
-    }
-    throw new Error('unexpected: Changelog section should exist after creation');
+      return lines;
+    });
+    if (found) return serialize(doc);
+
+    const entry = `- [x] ${description} ✅ ${dateStr}`;
+    action = 'appended';
+    appendToSection(doc, 'Changelog', [entry]);
+    return serialize(doc);
   });
   console.log(`${action}: ${description}`);
   return action;
@@ -65,10 +71,12 @@ function appendLog(dateStr, description, sourceType, sourceSlug, sourceTitle) {
   }
   const entry = `- [x] ${description} ✅ ${dateStr}${wikiSuffix}`;
   atomicRewrite(dailyNote, content => {
-    if (!findSectionLineRange(content.split('\n'), 'Log')) {
+    const doc = parse(content);
+    if (!findSection(doc, 'Log')) {
       throw new Error('no ## Log section found');
     }
-    return insertAtEndOfSection(content, 'Log', [entry]);
+    appendToSection(doc, 'Log', [entry]);
+    return serialize(doc);
   });
   console.log(entry);
 }

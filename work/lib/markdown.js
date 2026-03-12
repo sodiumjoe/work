@@ -1,27 +1,123 @@
 const fs = require('node:fs');
 
-function extractSection(content, sectionName) {
-  const lines = content.split('\n');
-  const result = [];
-  let inSection = false;
-  for (const line of lines) {
-    if (line.match(new RegExp(`^##\\s+${escapeRegex(sectionName)}\\s*$`))) {
-      inSection = true;
-      continue;
-    }
-    if (inSection && /^## /.test(line)) {
-      break;
-    }
-    if (inSection) {
-      result.push(line);
+function parse(content) {
+  const raw = content.split('\n');
+  let i = 0;
+
+  let frontmatter = null;
+  if (raw[0] === '---') {
+    for (let j = 1; j < raw.length; j++) {
+      if (raw[j] === '---') {
+        frontmatter = raw.slice(0, j + 1).join('\n');
+        i = j + 1;
+        break;
+      }
     }
   }
-  return result;
+
+  while (i < raw.length && raw[i].trim() === '') i++;
+
+  let title = null;
+  if (i < raw.length && /^# /.test(raw[i])) {
+    title = raw[i].replace(/^# /, '');
+    i++;
+  }
+
+  while (i < raw.length && raw[i].trim() === '') i++;
+
+  const preamble = [];
+  while (i < raw.length && !/^## /.test(raw[i])) {
+    preamble.push(raw[i]);
+    i++;
+  }
+  while (preamble.length > 0 && preamble[preamble.length - 1].trim() === '') preamble.pop();
+
+  const sections = [];
+  while (i < raw.length) {
+    if (/^## /.test(raw[i])) {
+      const name = raw[i].replace(/^## /, '').trim();
+      i++;
+      const lines = [];
+      while (i < raw.length && !/^## /.test(raw[i])) {
+        lines.push(raw[i]);
+        i++;
+      }
+      while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+      while (lines.length > 0 && lines[0].trim() === '') lines.shift();
+      sections.push({ name, lines });
+    } else {
+      i++;
+    }
+  }
+
+  return { frontmatter, title, preamble, sections };
 }
 
-function extractSectionFromFile(filePath, sectionName) {
-  const content = fs.readFileSync(filePath, 'utf-8');
-  return extractSection(content, sectionName);
+function serialize(doc) {
+  const out = [];
+
+  if (doc.frontmatter) {
+    out.push(doc.frontmatter);
+    out.push('');
+  }
+
+  if (doc.title) {
+    out.push(`# ${doc.title}`);
+    out.push('');
+  }
+
+  if (doc.preamble.length > 0) {
+    out.push(...doc.preamble);
+  }
+
+  for (const section of doc.sections) {
+    if (out.length > 0 && out[out.length - 1] !== '') {
+      out.push('');
+    }
+    out.push(`## ${section.name}`);
+    if (section.lines.length > 0) {
+      out.push('');
+      out.push(...section.lines);
+    }
+  }
+
+  return out.join('\n');
+}
+
+function findSection(doc, name) {
+  return doc.sections.find(s => s.name === name) || null;
+}
+
+function appendToSection(doc, name, lines) {
+  const section = findSection(doc, name);
+  if (!section) return;
+  section.lines.push(...lines);
+}
+
+function replaceSection(doc, name, lines) {
+  const section = findSection(doc, name);
+  if (!section) return;
+  section.lines = [...lines];
+}
+
+function mutateSection(doc, name, fn) {
+  const section = findSection(doc, name);
+  if (!section) return;
+  section.lines = fn(section.lines);
+}
+
+function insertSectionBefore(doc, beforeName, name, lines) {
+  const idx = doc.sections.findIndex(s => s.name === beforeName);
+  const section = { name, lines: [...lines] };
+  if (idx === -1) {
+    doc.sections.push(section);
+  } else {
+    doc.sections.splice(idx, 0, section);
+  }
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function findSectionLineRange(lines, sectionName) {
@@ -40,31 +136,15 @@ function findSectionLineRange(lines, sectionName) {
   return start === -1 ? null : { start, end };
 }
 
-function insertBeforeNextSection(content, afterSection, newLines) {
-  const lines = content.split('\n');
-  const range = findSectionLineRange(lines, afterSection);
-  if (!range) return content;
-  const insertAt = range.end;
-  const before = lines.slice(0, insertAt);
-  const after = lines.slice(insertAt);
-  return [...before, ...newLines, '', ...after].join('\n');
+function extractSection(content, sectionName) {
+  const doc = parse(content);
+  const section = findSection(doc, sectionName);
+  return section ? [...section.lines] : [];
 }
 
-function insertAtEndOfSection(content, sectionName, newLines) {
-  const lines = content.split('\n');
-  const range = findSectionLineRange(lines, sectionName);
-  if (!range) return content;
-  let insertAt = range.end;
-  while (insertAt > range.start + 1 && lines[insertAt - 1].trim() === '') {
-    insertAt--;
-  }
-  const before = lines.slice(0, insertAt);
-  let after = lines.slice(insertAt);
-  while (after.length > 0 && after[0].trim() === '') {
-    after.shift();
-  }
-  const separator = after.length > 0 ? [''] : [];
-  return [...before, ...newLines, ...separator, ...after].join('\n');
+function extractSectionFromFile(filePath, sectionName) {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  return extractSection(content, sectionName);
 }
 
 function parseFrontmatter(content) {
@@ -91,16 +171,17 @@ function getTitle(content) {
   return match ? match[1] : '';
 }
 
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 module.exports = {
+  parse,
+  serialize,
+  findSection,
+  appendToSection,
+  replaceSection,
+  mutateSection,
+  insertSectionBefore,
+  findSectionLineRange,
   extractSection,
   extractSectionFromFile,
-  findSectionLineRange,
-  insertBeforeNextSection,
-  insertAtEndOfSection,
   parseFrontmatter,
   getTitle,
 };
