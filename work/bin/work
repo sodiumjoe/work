@@ -5,7 +5,7 @@ const path = require('node:path');
 
 const LIB = path.join(__dirname, '..', 'lib');
 const { ensure, logSyncEntries, inject, injectReviews } = require(path.join(LIB, 'daily.js'));
-const { fetchReviews } = require(path.join(LIB, 'reviews.js'));
+const { fetchReviews, fetchReviewsAsync } = require(path.join(LIB, 'reviews.js'));
 const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
 const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState, scanOrphanedPlans } = require(path.join(LIB, 'scan.js'));
 const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, archivePlan, listProjects } = require(path.join(LIB, 'project.js'));
@@ -36,12 +36,14 @@ function getDate(opts) {
   return opts.date || todayStr();
 }
 
-function doGather(dateStr, quiet) {
+async function doGather(dateStr, quiet) {
   const log = quiet ? () => {} : console.log.bind(console);
   const q = { quiet };
   const errors = [];
   log('--- ensure ---');
   try { ensure(dateStr, q); } catch (e) { console.error('FAIL: ensure'); errors.push(`ensure: ${e.message}`); }
+  log('--- reviews (async) ---');
+  const reviewsPromise = fetchReviewsAsync();
   log('--- promote ---');
   try { promote(dateStr, q); } catch (e) { console.error('FAIL: promote'); errors.push(`promote: ${e.message}`); }
   log('--- scan ---');
@@ -53,9 +55,9 @@ function doGather(dateStr, quiet) {
   } catch (e) { console.error('FAIL: scan'); errors.push(`scan: ${e.message}`); }
   log('--- inject ---');
   try { inject(dateStr, scanResults, q); } catch (e) { console.error('FAIL: inject'); errors.push(`inject: ${e.message}`); }
-  log('--- reviews ---');
+  log('--- inject reviews ---');
   try {
-    const { reviews, error } = fetchReviews();
+    const { reviews, error } = await reviewsPromise;
     if (error) errors.push(`reviews: ${error}`);
     injectReviews(dateStr, reviews, q);
   } catch (e) { console.error('FAIL: reviews'); errors.push(`reviews: ${e.message}`); }
@@ -184,10 +186,10 @@ const commands = {
     inject(dateStr, results);
   },
 
-  gather() {
+  async gather() {
     const { opts } = parseOpts(args.slice(1));
     const dateStr = getDate(opts);
-    const errors = doGather(dateStr, false);
+    const errors = await doGather(dateStr, false);
 
     console.log('=== sync-check ===');
     try {
@@ -343,7 +345,7 @@ const commands = {
     parseChangelog(positional[0], positional[1]);
   },
 
-  tick() {
+  async tick() {
     const { opts } = parseOpts(args.slice(1));
     const quiet = !opts.verbose;
     const log = quiet ? () => {} : console.log.bind(console);
@@ -351,7 +353,7 @@ const commands = {
     const errors = [];
 
     log('=== gather ===');
-    errors.push(...doGather(dateStr, quiet));
+    errors.push(...await doGather(dateStr, quiet));
 
     log('=== sync --apply ===');
     try {
@@ -517,7 +519,10 @@ if (!cmd || !commands[cmd]) {
 }
 
 try {
-  commands[cmd]();
+  const result = commands[cmd]();
+  if (result && typeof result.then === 'function') {
+    result.catch(e => { console.error(e.message); process.exit(1); });
+  }
 } catch (e) {
   console.error(e.message);
   process.exit(1);

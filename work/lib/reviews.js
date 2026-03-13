@@ -1,4 +1,4 @@
-const { execFileSync } = require('node:child_process');
+const { execFile, execFileSync } = require('node:child_process');
 
 const GH_HOST = 'git.corp.stripe.com';
 const TIMEOUT_MS = 10_000;
@@ -14,22 +14,46 @@ function fetchReviews() {
       timeout: TIMEOUT_MS,
       encoding: 'utf-8',
     });
-    const reviews = raw.trim().split('\n').filter(Boolean).map(line => {
-      const obj = JSON.parse(line);
-      const repo = obj.repository_url.replace(/.*\/repos\//, '');
-      return {
-        title: obj.title,
-        url: obj.url,
-        author: obj.author,
-        repo,
-        number: obj.number,
-        updatedAt: obj.updated_at,
-      };
-    });
-    return { reviews, error: null };
+    return { reviews: parseReviewLines(raw), error: null };
   } catch (e) {
     return { reviews: [], error: e.message };
   }
+}
+
+function parseReviewLines(raw) {
+  return raw.trim().split('\n').filter(Boolean).map(line => {
+    const obj = JSON.parse(line);
+    const repo = obj.repository_url.replace(/.*\/repos\//, '');
+    return {
+      title: obj.title,
+      url: obj.url,
+      author: obj.author,
+      repo,
+      number: obj.number,
+      updatedAt: obj.updated_at,
+    };
+  });
+}
+
+function fetchReviewsAsync() {
+  if (process.env.WORK_SKIP_REVIEWS) return Promise.resolve({ reviews: [], error: null });
+  return new Promise((resolve) => {
+    execFile('gh', [
+      'api', '/search/issues?q=is:pr+is:open+assignee:@me',
+      '--jq', '.items[] | {title: .title, url: .html_url, author: .user.login, number: .number, repository_url: .repository_url, updated_at: .updated_at}',
+    ], {
+      env: { ...process.env, GH_HOST },
+      timeout: TIMEOUT_MS,
+      encoding: 'utf-8',
+    }, (err, stdout) => {
+      if (err) return resolve({ reviews: [], error: err.message });
+      try {
+        resolve({ reviews: parseReviewLines(stdout), error: null });
+      } catch (e) {
+        resolve({ reviews: [], error: e.message });
+      }
+    });
+  });
 }
 
 function formatReviews(reviews) {
@@ -41,4 +65,4 @@ function formatReviews(reviews) {
   return lines;
 }
 
-module.exports = { fetchReviews, formatReviews };
+module.exports = { fetchReviews, fetchReviewsAsync, formatReviews };

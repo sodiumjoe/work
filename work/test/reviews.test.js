@@ -133,3 +133,35 @@ describe('fetchReviews', () => {
     }
   });
 });
+
+describe('fetchReviewsAsync', () => {
+  it('returns error when gh is not available', async () => {
+    const { fetchReviewsAsync } = requireFresh();
+    const origPath = process.env.PATH;
+    process.env.PATH = '';
+    try {
+      const { reviews, error } = await fetchReviewsAsync();
+      assert.deepStrictEqual(reviews, []);
+      assert.ok(error);
+    } finally {
+      process.env.PATH = origPath;
+    }
+  });
+
+  it('returns empty when WORK_SKIP_REVIEWS is set', async () => {
+    const origSkip = process.env.WORK_SKIP_REVIEWS;
+    process.env.WORK_SKIP_REVIEWS = '1';
+    try {
+      const { fetchReviewsAsync } = requireFresh();
+      const { reviews, error } = await fetchReviewsAsync();
+      assert.deepStrictEqual(reviews, []);
+      assert.strictEqual(error, null);
+    } finally {
+      if (origSkip === undefined) {
+        delete process.env.WORK_SKIP_REVIEWS;
+      } else {
+        process.env.WORK_SKIP_REVIEWS = origSkip;
+      }
+    }
+  });
+});
