@@ -23,11 +23,11 @@ The session knows which project it belongs to. Use `EnterPlanMode` to plan imple
 
 ### Adding tasks to a project
 
-Add `- [ ] Description` lines to the project's `## Changelog` section. They surface in the picker next time `<leader>ap` runs (or on the next hourly `work tick`).
+Add `- [ ] Description` lines to the project's `## Changelog` section. They surface in the picker next time `<leader>ap` runs (or on the next `work tick`).
 
 ### Lifecycle
 
-Open changelog items keep a project visible in the queue. When all items are checked off, the nightly `work tick` marks the project `status: completed` automatically. No manual cleanup needed.
+Open changelog items keep a project visible in the queue. When all items are checked off, `work tick` marks the project `status: completed` automatically. No manual cleanup needed.
 
 ### Devbox workflow
 
@@ -36,12 +36,12 @@ The `dev` shell function connects the same task-picking flow to remote devboxes 
 ## Architecture
 
 ```
-launchd (hourly) ──> work tick ──> gather + sync + conditional wrap
-                                       │
-User ──> /command ──> command prompt    │
-              │       (commands/*.md)   │
-              │           │             │
-              └───────────┼─────────────┘
+work tick (manual) ──> gather + sync + conditional wrap
+                            │
+User ──> /command ──> command prompt
+              │       (commands/*.md)
+              │           │
+              └───────────┘
                           │
                           ├── calls `work` CLI (bin/work)
                           ├── reads/writes daily note
@@ -49,7 +49,7 @@ User ──> /command ──> command prompt    │
                           └── reads/writes plan files
 ```
 
-The `work` CLI handles deterministic operations (file parsing, section insertion, deduplication). The LLM handles judgment calls (user interaction, plan context summarization, end-of-day summary). A launchd timer runs `work tick` hourly to keep the daily note queue current and trigger end-of-day wrap automatically.
+The `work` CLI handles deterministic operations (file parsing, section insertion, deduplication). The LLM handles judgment calls (user interaction, plan context summarization, end-of-day summary). Run `work tick` manually to keep the daily note queue current and trigger wrap for previous unwrapped days.
 
 ### Module layout
 
@@ -68,10 +68,13 @@ lib/atomic.js     Atomic file rewrite (read-transform-rename)
 ### Data flow
 
 ```
-work tick (hourly via launchd)
-├── gather ──> ensure + carry + scan + inject
+work tick
+├── gather ──> ensure + promote + scan + inject
 ├── sync --apply (flush unlogged completions)
-└── if hour >= 18 AND no ## Summary:
+├── if weekly summary file missing:
+│   ├── propose archivable projects/plans
+│   └── write weekly summary (claude -p)
+└── for each previous day without ## Summary:
     └── wrap
         ├── sync --apply
         ├── claude -p (LLM writes comprehensive summary)
@@ -86,13 +89,14 @@ work tick (hourly via launchd)
 
 ### Automation: work tick
 
-A launchd plist (`~/.dotfiles/launchd/com.moon.work-tick.plist`) runs `work tick` at the top of every hour. `tick` does:
+Run `work tick` manually (or via neovim keybinds like `<leader>at`). `tick` does:
 
-1. **gather** — ensure daily note exists, carry forward yesterday's open items, scan all plans/projects for open changelog items, inject them into the queue
+1. **gather** — ensure daily note exists, promote completed tasks, scan all plans/projects for open items, inject them into the queue
 2. **sync --apply** — find changelog entries completed today that aren't in the daily note's Log section, and add them
-3. **wrap** (after 18:00, once per day) — sync again, spawn `claude -p` to write a comprehensive LLM summary into the daily note's `## Summary` section, then mark fully completed projects as `status: completed`
+3. **weekly proposals + summary** (once per week, gated on weekly summary file existence) — propose completed projects and orphaned plans for archival, write a weekly narrative summary via Claude
+4. **wrap** (previous days only) — scan backward up to 7 days for daily notes missing a `## Summary`, wrap each by syncing, spawning `claude -p` for a summary, and marking fully completed projects as `status: completed`
 
-If any step fails, `tick` injects a queue item (`Investigate work tick errors: ...`) so the error surfaces in `/next`.
+If any step fails, `tick` spawns Claude to file a diagnostic task in the work project.
 
 ### Project lifecycle
 
@@ -110,7 +114,7 @@ Commands:
   list-projects                List active/evergreen projects (TSV)
   inject                       Rebuild daily note tasks view from scan
   gather                       Run ensure + carry + sync + scan + inject
-  tick                         Hourly maintenance: gather + sync + conditional wrap
+  tick                         Maintenance: gather + sync + conditional wrap
   wrap                         End-of-day: sync + Claude summary + complete projects
   mark <substr> <status>       Toggle a queue item's checkbox
   queue                        List open/in-progress queue items (TSV)
@@ -268,8 +272,6 @@ All fields are optional. The `WORK_VAULT` environment variable takes precedence 
 | `~/.claude/plans/` | Active plan files (symlinked into vault at `$WORK_VAULT/plans/`) |
 | `$WORK_VAULT/archive/` | Archived plans |
 | `$WORK_VAULT/monthly/YYYY-MM.md` | Monthly work summaries |
-| `~/.dotfiles/launchd/com.moon.work-tick.plist` | Hourly launchd timer |
-| `~/Library/Logs/work-tick.log` | Tick stdout/stderr (rotated by `tick`) |
 
 ## Devbox integration
 

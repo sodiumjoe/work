@@ -194,8 +194,8 @@ status: active
   });
 });
 
-describe('tick triggers wrap after 6 PM', () => {
-  it('runs wrap when hour >= 18 and no summary', () => {
+describe('tick wraps previous unwrapped days', () => {
+  it('wraps previous day note if it lacks summary', () => {
     writeProject('wrapable.md', `---
 status: active
 ---
@@ -205,14 +205,19 @@ status: active
 ## Tasks
 
 ## Changelog
-- [x] Done ✅ 2026-03-10
+- [x] Done ✅ 2026-03-09
 
 ## Notes`);
 
+    writeDailyNote('2026-03-09', '## Tasks\n\n## Log\n');
     writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
+    // pre-create weekly file so weekly summary doesn't fire and steal the fake claude call
+    fs.mkdirSync(path.join(tmpDir, 'weekly'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'weekly', '2026-W11.md'), '# done');
+
     const fakeClaude = path.join(tmpDir, 'fake-claude.js');
-    const np = path.join(tmpDir, '2026-03-10.md');
+    const np = path.join(tmpDir, '2026-03-09.md');
     fs.writeFileSync(fakeClaude, [
       `#!/usr/bin/env node`,
       `const fs = require('fs');`,
@@ -223,40 +228,73 @@ status: active
     ].join('\n'), { mode: 0o755 });
 
     const output = runWorkEnv(
-      { WORK_TEST_HOUR: '20', WORK_CLAUDE_CMD: fakeClaude },
+      { WORK_CLAUDE_CMD: fakeClaude },
       'tick', '--verbose', '--date=2026-03-10'
     );
-    assert.ok(output.includes('=== wrap ==='));
-    const note = readDailyNote('2026-03-10');
+    assert.ok(output.includes('=== wrap 2026-03-09 ==='));
+    const note = readDailyNote('2026-03-09');
     assert.ok(note.includes('## Summary'));
     const proj = fs.readFileSync(path.join(tmpDir, 'projects', 'wrapable.md'), 'utf-8');
     assert.ok(proj.includes('status: completed'));
   });
 
-  it('skips wrap when summary already exists', () => {
-    writeDailyNote('2026-03-10', '## Tasks\n\n## Summary\nAlready done\n\n## Log\n');
-
-    const output = runWorkEnv(
-      { WORK_TEST_HOUR: '20' },
-      'tick', '--verbose', '--date=2026-03-10'
-    );
-    assert.ok(output.includes('skip wrap'));
-    assert.ok(output.includes('hasSummary=true'));
-  });
-
-  it('skips wrap before 6 PM', () => {
+  it('stops backfill at first summarized day', () => {
+    writeDailyNote('2026-03-08', '## Tasks\n\n## Summary\nAlready done\n\n## Log\n');
+    writeDailyNote('2026-03-09', '## Tasks\n\n## Log\n');
     writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
+    const wrappedDates = [];
+    const fakeClaude = path.join(tmpDir, 'fake-claude.js');
+    const logFile = path.join(tmpDir, 'wrap-log.txt');
+    fs.writeFileSync(fakeClaude, [
+      '#!/usr/bin/env node',
+      `const fs = require('fs');`,
+      `const existing = fs.existsSync(${JSON.stringify(logFile)}) ? fs.readFileSync(${JSON.stringify(logFile)}, 'utf-8') : '';`,
+      `fs.writeFileSync(${JSON.stringify(logFile)}, existing + 'wrapped\\n');`,
+    ].join('\n'), { mode: 0o755 });
+
     const output = runWorkEnv(
-      { WORK_TEST_HOUR: '10' },
+      { WORK_CLAUDE_CMD: fakeClaude },
       'tick', '--verbose', '--date=2026-03-10'
     );
-    assert.ok(output.includes('skip wrap'));
+    assert.ok(output.includes('=== wrap 2026-03-09 ==='));
+    assert.ok(!output.includes('=== wrap 2026-03-08 ==='));
+    const wrapCount = fs.readFileSync(logFile, 'utf-8').split('\n').filter(l => l === 'wrapped').length;
+    assert.equal(wrapCount, 1);
+  });
+
+  it('does not wrap today', () => {
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
+
+    const output = runWork('tick', '--verbose', '--date=2026-03-10');
+    assert.ok(!output.includes('=== wrap'));
+  });
+
+  it('skips days with no daily note', () => {
+    // day N-1 has no note, day N-2 has unsummarized note
+    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
+
+    const logFile = path.join(tmpDir, 'wrap-log.txt');
+    const fakeClaude = path.join(tmpDir, 'fake-claude.js');
+    fs.writeFileSync(fakeClaude, [
+      '#!/usr/bin/env node',
+      `const fs = require('fs');`,
+      `const existing = fs.existsSync(${JSON.stringify(logFile)}) ? fs.readFileSync(${JSON.stringify(logFile)}, 'utf-8') : '';`,
+      `fs.writeFileSync(${JSON.stringify(logFile)}, existing + 'wrapped\\n');`,
+    ].join('\n'), { mode: 0o755 });
+
+    const output = runWorkEnv(
+      { WORK_CLAUDE_CMD: fakeClaude },
+      'tick', '--verbose', '--date=2026-03-10'
+    );
+    assert.ok(output.includes('=== wrap 2026-03-08 ==='));
+    assert.ok(!output.includes('=== wrap 2026-03-09 ==='));
   });
 });
 
-describe('queue enqueue via tick on Sunday', () => {
-  it('proposes completed projects on Sunday', () => {
+describe('weekly proposals via tick', () => {
+  it('proposes completed projects when weekly file missing', () => {
     writeProject('done-proj.md', `---
 status: completed
 completed_at: 2026-03-08
@@ -282,12 +320,11 @@ status: active
 
 ## Notes`);
 
-    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
-    // 2026-03-08 is a Sunday
-    const output = runWork('tick', '--verbose', '--date=2026-03-08');
+    const output = runWork('tick', '--verbose', '--date=2026-03-10');
     assert.ok(output.includes('propose'));
-    const note = readDailyNote('2026-03-08');
+    const note = readDailyNote('2026-03-10');
     assert.ok(note.includes('key:projects/done-proj'));
     assert.ok(!note.includes('key:projects/active-proj'));
   });
@@ -304,60 +341,39 @@ status: evergreen
 
 ## Notes`);
 
-    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
-    runWork('tick', '--verbose', '--date=2026-03-08');
-    const note = readDailyNote('2026-03-08');
+    runWork('tick', '--verbose', '--date=2026-03-10');
+    const note = readDailyNote('2026-03-10');
     assert.ok(!note.includes('key:projects/evergreen'));
   });
-});
 
-describe('tick log rotation', () => {
-  it('does not rotate when log is small', () => {
-    const logPath = path.join(tmpDir, 'test-tick.log');
-    fs.writeFileSync(logPath, 'line1\nline2\nline3\n');
+  it('skips proposals when weekly file already exists', () => {
+    writeProject('done-proj.md', `---
+status: completed
+completed_at: 2026-03-08
+---
+
+# Done Project
+
+## Changelog
+- [x] Item ✅ 2026-03-08
+
+## Notes`);
+
     writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
-    runWorkEnv({ WORK_LOG_PATH: logPath }, 'tick', '--verbose', '--date=2026-03-10');
+    // 2026-03-10 is in ISO week 2026-W11
+    fs.mkdirSync(path.join(tmpDir, 'weekly'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'weekly', '2026-W11.md'), '# Already done');
 
-    assert.ok(fs.existsSync(logPath));
-    assert.equal(fs.readFileSync(logPath, 'utf-8'), 'line1\nline2\nline3\n');
-    const rotated = path.join(tmpDir, 'work-tick-2026-03-10.log');
-    assert.ok(!fs.existsSync(rotated));
-  });
-
-  it('rotates when log exceeds threshold', () => {
-    const logPath = path.join(tmpDir, 'test-tick.log');
-    const bigLog = Array.from({ length: 1001 }, (_, i) => `line ${i}`).join('\n') + '\n';
-    fs.writeFileSync(logPath, bigLog);
-    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
-
-    runWorkEnv({ WORK_LOG_PATH: logPath }, 'tick', '--verbose', '--date=2026-03-10');
-
-    assert.equal(fs.readFileSync(logPath, 'utf-8'), '');
-    const rotated = path.join(tmpDir, 'work-tick-2026-03-10.log');
-    assert.ok(fs.existsSync(rotated));
-    const rotatedContent = fs.readFileSync(rotated, 'utf-8');
-    assert.ok(rotatedContent.includes('line 0'));
-    assert.ok(rotatedContent.includes('line 1000'));
-  });
-
-  it('appends when rotated file already exists', () => {
-    const logPath = path.join(tmpDir, 'test-tick.log');
-    const rotated = path.join(tmpDir, 'work-tick-2026-03-10.log');
-    fs.writeFileSync(rotated, 'previous\n');
-    const bigLog = Array.from({ length: 1001 }, (_, i) => `line ${i}`).join('\n') + '\n';
-    fs.writeFileSync(logPath, bigLog);
-    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
-
-    runWorkEnv({ WORK_LOG_PATH: logPath }, 'tick', '--verbose', '--date=2026-03-10');
-
-    assert.equal(fs.readFileSync(logPath, 'utf-8'), '');
-    const rotatedContent = fs.readFileSync(rotated, 'utf-8');
-    assert.ok(rotatedContent.startsWith('previous\n'));
-    assert.ok(rotatedContent.includes('line 0'));
+    const output = runWork('tick', '--verbose', '--date=2026-03-10');
+    assert.ok(!output.includes('propose'));
+    const note = readDailyNote('2026-03-10');
+    assert.ok(!note.includes('key:projects/done-proj'));
   });
 });
+
 
 describe('tick error debug', () => {
   function makeFakeClaude() {
@@ -461,8 +477,8 @@ describe('wrap passes --allowedTools', () => {
   });
 });
 
-describe('orphaned plan proposals via tick on Sunday', () => {
-  it('proposes orphaned plans on Sunday', () => {
+describe('orphaned plan proposals via tick', () => {
+  it('proposes orphaned plans when weekly file missing', () => {
     writePlan('orphan-plan.md', `---
 status: active
 ---
@@ -472,11 +488,11 @@ status: active
 ## Changelog
 - [x] Did work ✅ 2026-03-01`);
 
-    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
-    const output = runWork('tick', '--verbose', '--date=2026-03-08');
+    const output = runWork('tick', '--verbose', '--date=2026-03-10');
     assert.ok(output.includes('propose'));
-    const note = readDailyNote('2026-03-08');
+    const note = readDailyNote('2026-03-10');
     assert.ok(note.includes('key:plans/orphan-plan'));
     assert.ok(note.includes('orphaned plan'));
   });
@@ -492,10 +508,10 @@ project: "[[projects/foo]]"
 ## Changelog
 - [x] Done ✅ 2026-03-01`);
 
-    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
-    runWork('tick', '--verbose', '--date=2026-03-08');
-    const note = readDailyNote('2026-03-08');
+    runWork('tick', '--verbose', '--date=2026-03-10');
+    const note = readDailyNote('2026-03-10');
     assert.ok(!note.includes('key:plans/linked-plan'));
   });
 
@@ -510,10 +526,10 @@ status: active
 - [ ] Still working
 - [x] Done ✅ 2026-03-01`);
 
-    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
-    runWork('tick', '--verbose', '--date=2026-03-08');
-    const note = readDailyNote('2026-03-08');
+    runWork('tick', '--verbose', '--date=2026-03-10');
+    const note = readDailyNote('2026-03-10');
     assert.ok(!note.includes('key:plans/open-plan'));
   });
 });
@@ -595,8 +611,8 @@ status: active
   });
 });
 
-describe('tick writes weekly summary on Sunday', () => {
-  it('spawns claude for weekly summary', () => {
+describe('tick writes weekly summary', () => {
+  it('spawns claude for weekly summary when weekly file missing', () => {
     writeProject('proj.md', `---
 status: active
 ---
@@ -606,14 +622,14 @@ status: active
 ## Tasks
 
 ## Changelog
-- [x] Weekly work ✅ 2026-03-05
+- [x] Weekly work ✅ 2026-03-10
 
 ## Notes`);
 
-    writeDailyNote('2026-03-08', '## Tasks\n\n## Log\n');
+    writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
     const weeklyDir = path.join(tmpDir, 'weekly');
-    const outputPath = path.join(weeklyDir, '2026-W10.md');
+    const outputPath = path.join(weeklyDir, '2026-W11.md');
     const stdinFile = path.join(tmpDir, 'claude-stdin.txt');
     const fakeClaude = path.join(tmpDir, 'fake-claude.js');
     fs.writeFileSync(fakeClaude, [
@@ -625,13 +641,13 @@ status: active
       `process.stdin.on('end', () => {`,
       `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
       `  fs.mkdirSync(${JSON.stringify(weeklyDir)}, { recursive: true });`,
-      `  fs.writeFileSync(${JSON.stringify(outputPath)}, '# 2026-W10 Work Summary\\n\\nNarrative.');`,
+      `  fs.writeFileSync(${JSON.stringify(outputPath)}, '# 2026-W11 Work Summary\\n\\nNarrative.');`,
       `});`,
     ].join('\n'), { mode: 0o755 });
 
     const output = runWorkEnv(
       { WORK_CLAUDE_CMD: fakeClaude },
-      'tick', '--verbose', '--date=2026-03-08'
+      'tick', '--verbose', '--date=2026-03-10'
     );
     assert.ok(output.includes('weekly summary'));
     assert.ok(fs.existsSync(outputPath));
@@ -640,7 +656,7 @@ status: active
     assert.ok(stdin.includes('Weekly work'));
   });
 
-  it('does not write weekly summary on non-Sunday', () => {
+  it('skips weekly summary when weekly file already exists', () => {
     writeProject('proj.md', `---
 status: active
 ---
@@ -656,7 +672,11 @@ status: active
 
     writeDailyNote('2026-03-10', '## Tasks\n\n## Log\n');
 
-    runWork('tick', '--verbose', '--date=2026-03-10');
-    assert.ok(!fs.existsSync(path.join(tmpDir, 'weekly')));
+    // 2026-03-10 is in ISO week 2026-W11
+    fs.mkdirSync(path.join(tmpDir, 'weekly'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'weekly', '2026-W11.md'), '# Already done');
+
+    const output = runWork('tick', '--verbose', '--date=2026-03-10');
+    assert.ok(!output.includes('weekly summary'));
   });
 });

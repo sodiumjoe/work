@@ -9,7 +9,7 @@ const { fetchReviews } = require(path.join(LIB, 'reviews.js'));
 const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
 const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState, scanOrphanedPlans } = require(path.join(LIB, 'scan.js'));
 const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, archivePlan, listProjects } = require(path.join(LIB, 'project.js'));
-const { writeWeeklySummary } = require(path.join(LIB, 'summary.js'));
+const { writeWeeklySummary, isoWeek } = require(path.join(LIB, 'summary.js'));
 const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
 const { parse, serialize, appendToSection, extractSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
 const { checkOff, appendLog } = require(path.join(LIB, 'changelog.js'));
@@ -34,24 +34,6 @@ function parseOpts(args) {
 
 function getDate(opts) {
   return opts.date || todayStr();
-}
-
-const LOG_PATH = process.env.WORK_LOG_PATH || '/tmp/work-tick.log';
-const LOG_ROTATE_THRESHOLD = 1000;
-
-function rotateLog(dateStr) {
-  if (!fs.existsSync(LOG_PATH)) return;
-  const content = fs.readFileSync(LOG_PATH, 'utf-8');
-  const lines = content.split('\n');
-  if (lines.length <= LOG_ROTATE_THRESHOLD) return;
-  const dir = path.dirname(LOG_PATH);
-  const rotated = path.join(dir, `work-tick-${dateStr}.log`);
-  if (fs.existsSync(rotated)) {
-    fs.appendFileSync(rotated, content);
-  } else {
-    fs.renameSync(LOG_PATH, rotated);
-  }
-  fs.writeFileSync(LOG_PATH, '');
 }
 
 function doGather(dateStr, quiet) {
@@ -93,12 +75,11 @@ function doErrorDebug(dateStr, errors) {
     if (/^- \[[ /]\] Fix tick error:/m.test(content)) return;
   }
   const projectRoot = path.join(__dirname, '..', '..');
-  const prompt = `The work tick command encountered errors during its hourly run on ${dateStr}:
+  const prompt = `The work tick command encountered errors on ${dateStr}:
 
 ${errors.map(e => `- ${e}`).join('\n')}
 
-The tick source code is at work/bin/work. The tick() function starts around line 315.
-The log file is at ${LOG_PATH}.
+The tick source code is at work/bin/work.
 
 Investigate the root cause by reading the relevant source files. Then:
 1. Create a plan file at ${PLAN_DIR}/${dateStr}-tick-error.md with this frontmatter:
@@ -369,8 +350,6 @@ const commands = {
     const dateStr = getDate(opts);
     const errors = [];
 
-    rotateLog(dateStr);
-
     log('=== gather ===');
     errors.push(...doGather(dateStr, quiet));
 
@@ -409,10 +388,11 @@ const commands = {
       errors.push(`archive-dequeue: ${e.message}`);
     }
 
-    const now = new Date();
     const [y, m, d] = dateStr.split('-').map(Number);
-    const tickDate = new Date(y, m - 1, d);
-    if (tickDate.getDay() === 0) {
+    const { year, week } = isoWeek(new Date(y, m - 1, d));
+    const weekLabel = `${year}-W${String(week).padStart(2, '0')}`;
+    const weeklyPath = path.join(VAULT_ROOT, 'weekly', `${weekLabel}.md`);
+    if (!fs.existsSync(weeklyPath)) {
       log('=== propose archivable ===');
       try {
         const projFiles = fs.existsSync(PROJECT_DIR)
@@ -457,17 +437,18 @@ const commands = {
       }
     }
 
-    const hour = process.env.WORK_TEST_HOUR != null ? parseInt(process.env.WORK_TEST_HOUR) : now.getHours();
-    const np = notePath(dateStr);
-    if (fs.existsSync(np)) {
-      const note = fs.readFileSync(np, 'utf-8');
-      const hasSummary = /^## Summary/m.test(note);
-      if (hour >= 18 && !hasSummary) {
-        log('=== wrap ===');
-        doWrap(dateStr);
-      } else {
-        log(`skip wrap (hour=${hour}, hasSummary=${hasSummary})`);
-      }
+    function formatDateStr(dt) {
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    }
+    for (let i = 1; i <= 7; i++) {
+      const prev = new Date(y, m - 1, d - i);
+      const prevDate = formatDateStr(prev);
+      const prevNp = notePath(prevDate);
+      if (!fs.existsSync(prevNp)) continue;
+      const prevNote = fs.readFileSync(prevNp, 'utf-8');
+      if (/^## Summary/m.test(prevNote)) break;
+      log(`=== wrap ${prevDate} ===`);
+      doWrap(prevDate);
     }
 
     if (opts['simulate-error']) {
@@ -475,6 +456,7 @@ const commands = {
     }
 
     if (errors.length > 0) {
+      process.exitCode = 1;
       for (const e of errors) syslog('ERROR', `tick: ${e}`);
       doErrorDebug(dateStr, errors);
     } else {
@@ -510,7 +492,7 @@ Commands:
   list-projects                List active/evergreen projects (TSV)
   inject                       Rebuild daily note tasks view from scan
   gather                       Run ensure + promote + sync + scan + inject
-  tick                         Hourly maintenance: gather + sync + conditional wrap
+  tick                         Maintenance: gather + sync + conditional wrap
   wrap                         End-of-day: sync + Claude summary + complete projects
   summary                      Show completed and open items
   list-tasks [file]            List open/in-progress tasks (TSV)
