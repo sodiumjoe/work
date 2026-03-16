@@ -10,6 +10,69 @@ Agentic workflow system for Claude Code. Three primitives: agents, commands, hoo
 
 **Session Hooks** are scripts triggered on session lifecycle events. The `SessionStart` hook injects project context into new Claude sessions. Defined in `work/hooks/`.
 
+## Data Model
+
+### Entities
+
+| Entity | Location | Key sections |
+|--------|----------|--------------|
+| Project | `~/stripe/work/projects/<slug>.md` | Tasks, Changelog, Plans, Notes |
+| Plan | `~/.claude/plans/<name>.md` | Context, Approach, Files to modify, Verification, Notes |
+| Daily note | `~/stripe/work/YYYY-MM-DD.md` | Reviews, Tasks, Log, Archive |
+| Weekly summary | `~/stripe/work/weekly/YYYY-WNN.md` | Narrative recap |
+
+### Frontmatter
+
+- **Project**: `status` (active / evergreen / completed), optional `completed_at`
+- **Plan**: `status` (active), `project` (wikilink to project file — required, no exceptions)
+- **Daily note**: `id` (date string), `tags: [daily-notes]`
+
+### Relationships
+
+```
+Project 1──* Plan       (plan frontmatter `project` field → wikilink)
+Project 1──* Task       (project ## Tasks section)
+Project 1──* Changelog  (project ## Changelog section)
+Daily    *──* Project   (daily ## Tasks aggregates from all active projects)
+Daily    1──* Log entry (daily ## Log, each entry wikilinks back to source project/plan)
+```
+
+### Single source of truth
+
+| State | Lives in | Aggregated to |
+|-------|----------|---------------|
+| Open tasks | Project `## Tasks` | Daily note `## Tasks` (via `scanOpenItems` → `inject`) |
+| Completed work | Project `## Changelog` | Daily note `## Log` (via `appendLog`) |
+| Plan linkage | Plan frontmatter `project` field | Project `## Plans` (manual) |
+| Task state | Checkbox: `[ ]` open, `[/]` in-progress, `[x]` done | — |
+
+### Data flows
+
+**`work tick`:**
+1. `scanOpenItems()` reads all project `## Tasks` for open/in-progress items
+2. `inject()` replaces daily note `## Tasks` with grouped results (evergreen first, then active, then unassigned)
+3. `syncCheck()` finds changelog entries with today's date not yet in daily `## Log`
+4. `logSyncEntries()` appends missing entries to daily `## Log`
+
+**`work complete <project-file> <description>`:**
+1. `checkOff()` marks item done in project file — checks `## Tasks` first, then `## Changelog`, appends to `## Changelog` if not found
+2. `appendLog()` writes `- [x] description ✅ YYYY-MM-DD — [[projects/slug|Title]]` to daily `## Log`
+
+### Lifecycles
+
+**Task:** `[ ]` open → `[/]` in-progress → `[x]` done `✅ YYYY-MM-DD`
+
+**Project:** `active` → `completed` (auto, via `completeProjects()`, when no open tasks/changelog items remain and at least one done item exists). Evergreen projects skip auto-completion and always appear in the daily note.
+
+### What breaks when state drifts
+
+| Drift | Symptom | Prevention |
+|-------|---------|------------|
+| Plan missing `project` field | Orphaned, invisible to project | CLAUDE.md rule: required field |
+| Changelog in plan instead of project | Duplicate entries, `syncCheck` misses them | CLAUDE.md rule: no `## Changelog` in plans |
+| Task completed without `work complete` | Missing from daily `## Log` | `syncCheck` catches unsynced entries on next tick |
+| Blocked task with no review date | Stale indefinitely | Manual triage during `/start-day` |
+
 ## Agents
 
 ### plan-reviewer
