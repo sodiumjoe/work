@@ -15,7 +15,7 @@ Run `date +%Y-%m` to get `YYYY-MM`.
 
 ### 2. Scan all active plan files
 
-Read every `*.md` file in `~/.claude/plans/`.
+Read every `*.md` file in `$(work paths plans)/`.
 
 For each file:
 - Extract the title from the first `# ` heading
@@ -80,7 +80,7 @@ For each plan classified as "active" (has unchecked `- [ ]` entries and no proje
 - The unchecked items
 
 Ask the user for each active plan:
-- **Keep** — leave in `~/.claude/plans/` (default)
+- **Keep** — leave in `$(work paths plans)/` (default)
 - **Archive anyway** — move to archive despite incomplete items
 - **Delete** — remove entirely with `rm` (abandoned work)
 
@@ -132,22 +132,22 @@ Before deleting, back up plans marked for deletion (abandoned active plans and n
 
 ```
 mkdir -p $(work paths vault)/archive/.backup-YYYY-MM-DD
-cp ~/.claude/plans/<filename>.md $(work paths vault)/archive/.backup-YYYY-MM-DD/
-rm ~/.claude/plans/<filename>.md
+cp $(work paths plans)/<filename>.md $(work paths vault)/archive/.backup-YYYY-MM-DD/
+rm $(work paths plans)/<filename>.md
 ```
 
 Use today's date for the backup directory name. Backups can be cleaned up manually after 30 days.
 
 ### 9. Move archived plans
 
-Move confirmed plan files from `~/.claude/plans/` to `$(work paths vault)/archive/`:
+Move confirmed plan files from `$(work paths plans)/` to `$(work paths vault)/archive/`:
 
 ```
 mkdir -p $(work paths vault)/archive
-mv ~/.claude/plans/<filename>.md $(work paths vault)/archive/
+mv $(work paths plans)/<filename>.md $(work paths vault)/archive/
 ```
 
-The archive directory lives in the Obsidian vault but is NOT under the `~/.claude/plans/` symlink, so archived plans will not sync to devboxes.
+The archive directory lives in the Obsidian vault but outside the plans directory, so archived plans will not sync to devboxes.
 
 ### 10. Report
 

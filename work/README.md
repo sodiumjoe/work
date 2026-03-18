@@ -206,7 +206,7 @@ status: active
 
 ### Plan file format
 
-Path: `~/.claude/plans/YYYY-MM-DD-slug.md`
+Path: `$WORK_VAULT/plans/YYYY-MM-DD-slug.md`
 
 With project (no changelog — project owns the canonical task list):
 ```markdown
@@ -260,7 +260,7 @@ Config file: `$XDG_CONFIG_HOME/work/config.json` (default `~/.config/work/config
 }
 ```
 
-All fields are optional. The `WORK_VAULT` environment variable takes precedence over the config file `vault` field. Default vault: `~/work`. Default plans: `~/.claude/plans`.
+All fields are optional. The `WORK_VAULT` environment variable takes precedence over the config file `vault` field. Default vault: `~/work`. Default plans: `$WORK_VAULT/plans`.
 
 ## File layout
 
@@ -269,7 +269,7 @@ All fields are optional. The `WORK_VAULT` environment variable takes precedence 
 | `$WORK_VAULT/` | Obsidian vault root |
 | `$WORK_VAULT/YYYY-MM-DD.md` | Daily notes |
 | `$WORK_VAULT/projects/` | Project files |
-| `~/.claude/plans/` | Active plan files (symlinked into vault at `$WORK_VAULT/plans/`) |
+| `$WORK_VAULT/plans/` | Active plan files (configured via `plansDirectory` setting) |
 | `$WORK_VAULT/archive/` | Archived plans |
 | `$WORK_VAULT/monthly/YYYY-MM.md` | Monthly work summaries |
 

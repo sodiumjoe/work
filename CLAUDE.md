@@ -17,7 +17,7 @@ Agentic workflow system for Claude Code. Three primitives: agents, commands, hoo
 | Entity | Location | Key sections |
 |--------|----------|--------------|
 | Project | `~/stripe/work/projects/<slug>.md` | Tasks, Changelog, Plans, Notes |
-| Plan | `~/.claude/plans/<name>.md` | Context, Approach, Files to modify, Verification, Notes |
+| Plan | `~/stripe/work/plans/<name>.md` | Context, Approach, Files to modify, Verification, Notes |
 | Daily note | `~/stripe/work/YYYY-MM-DD.md` | Reviews, Tasks, Log, Archive |
 | Weekly summary | `~/stripe/work/weekly/YYYY-WNN.md` | Narrative recap |
 
@@ -160,7 +160,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash(date:*), Bash(mkdir:*), Bash(
 
 **Steps:**
 1. Get current month: `date +%Y-%m`
-2. Scan all plan files in `~/.claude/plans/`
+2. Scan all plan files in `$(work paths plans)/`
 3. Classify plans (archivable vs active based on changelog state and project linkage)
 4. Detect duplicates, propose project creation or merge
 5. Audit active plans with user confirmation (keep/archive/delete)
