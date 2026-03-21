@@ -1,22 +1,21 @@
-const { describe, it, beforeEach, afterEach } = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const os = require('node:os');
+const { describe, it, beforeEach, afterEach } = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
 
 let tmpDir;
 let origVault;
 let origXdg;
-const libDir = path.join(__dirname, '..', 'lib');
+const libDir = path.join(__dirname, "..", "lib");
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'summary-test-'));
-  fs.mkdirSync(path.join(tmpDir, 'projects'));
-  fs.mkdirSync(path.join(tmpDir, 'plans'));
-  fs.mkdirSync(path.join(tmpDir, 'config', 'work'), { recursive: true });
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "summary-test-"));
+  fs.mkdirSync(path.join(tmpDir, "projects"));
+  fs.mkdirSync(path.join(tmpDir, "config", "work"), { recursive: true });
   fs.writeFileSync(
-    path.join(tmpDir, 'config', 'work', 'config.json'),
-    JSON.stringify({ plans: path.join(tmpDir, 'plans') })
+    path.join(tmpDir, "config", "work", "config.json"),
+    JSON.stringify({}),
   );
   origVault = process.env.WORK_VAULT;
   origXdg = process.env.XDG_CONFIG_HOME;
@@ -41,38 +40,36 @@ function requireFresh() {
     if (key.startsWith(libDir)) delete require.cache[key];
   }
   process.env.WORK_VAULT = tmpDir;
-  process.env.XDG_CONFIG_HOME = path.join(tmpDir, 'config');
-  return require(path.join(libDir, 'summary.js'));
+  process.env.XDG_CONFIG_HOME = path.join(tmpDir, "config");
+  return require(path.join(libDir, "summary.js"));
 }
 
-function writeProject(name, content) {
-  fs.writeFileSync(path.join(tmpDir, 'projects', name), content);
-}
-
-function writePlan(name, content) {
-  fs.writeFileSync(path.join(tmpDir, 'plans', name), content);
+function writeProject(slug, content) {
+  const dir = path.join(tmpDir, "projects", slug);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "project.md"), content);
 }
 
 function writeDailyNote(dateStr, content) {
   fs.writeFileSync(path.join(tmpDir, `${dateStr}.md`), content);
 }
 
-describe('isoWeek', () => {
-  it('returns correct week for mid-year date', () => {
+describe("isoWeek", () => {
+  it("returns correct week for mid-year date", () => {
     const { isoWeek } = requireFresh();
     const result = isoWeek(new Date(2026, 2, 8));
     assert.equal(result.year, 2026);
     assert.equal(result.week, 10);
   });
 
-  it('returns correct week for start of year', () => {
+  it("returns correct week for start of year", () => {
     const { isoWeek } = requireFresh();
     const result = isoWeek(new Date(2026, 0, 5));
     assert.equal(result.year, 2026);
     assert.equal(result.week, 2);
   });
 
-  it('handles year boundary: 2025-12-29 is W01 of 2026', () => {
+  it("handles year boundary: 2025-12-29 is W01 of 2026", () => {
     const { isoWeek } = requireFresh();
     const result = isoWeek(new Date(2025, 11, 29));
     assert.equal(result.year, 2026);
@@ -80,28 +77,30 @@ describe('isoWeek', () => {
   });
 });
 
-describe('weekRange', () => {
-  it('returns Monday-Sunday for a Sunday date', () => {
+describe("weekRange", () => {
+  it("returns Monday-Sunday for a Sunday date", () => {
     const { weekRange } = requireFresh();
-    const result = weekRange('2026-03-08');
-    assert.equal(result.monday, '2026-03-02');
-    assert.equal(result.sunday, '2026-03-08');
+    const result = weekRange("2026-03-08");
+    assert.equal(result.monday, "2026-03-02");
+    assert.equal(result.sunday, "2026-03-08");
     assert.equal(result.dates.size, 7);
-    assert.ok(result.dates.has('2026-03-02'));
-    assert.ok(result.dates.has('2026-03-08'));
+    assert.ok(result.dates.has("2026-03-02"));
+    assert.ok(result.dates.has("2026-03-08"));
   });
 
-  it('returns correct range for a Wednesday', () => {
+  it("returns correct range for a Wednesday", () => {
     const { weekRange } = requireFresh();
-    const result = weekRange('2026-03-04');
-    assert.equal(result.monday, '2026-03-02');
-    assert.equal(result.sunday, '2026-03-08');
+    const result = weekRange("2026-03-04");
+    assert.equal(result.monday, "2026-03-02");
+    assert.equal(result.sunday, "2026-03-08");
   });
 });
 
-describe('collectWeekEntries', () => {
-  it('finds project entries in date range', () => {
-    writeProject('proj.md', `---
+describe("collectWeekEntries", () => {
+  it("finds project entries in date range", () => {
+    writeProject(
+      "proj",
+      `---
 status: active
 ---
 
@@ -109,210 +108,201 @@ status: active
 
 ## Changelog
 - [x] In range ✅ 2026-03-05
-- [x] Out of range ✅ 2026-03-15`);
+- [x] Out of range ✅ 2026-03-15`,
+    );
 
     const { collectWeekEntries } = requireFresh();
-    const result = collectWeekEntries('2026-03-08');
+    const result = collectWeekEntries("2026-03-08");
     assert.equal(result.groups.length, 1);
-    assert.equal(result.groups[0].title, 'My Project');
+    assert.equal(result.groups[0].title, "My Project");
     assert.equal(result.groups[0].entries.length, 1);
-    assert.ok(result.groups[0].entries[0].includes('In range'));
+    assert.ok(result.groups[0].entries[0].includes("In range"));
   });
 
-  it('finds standalone plan entries', () => {
-    writePlan('standalone.md', `---
-status: active
----
-
-# Standalone Plan
-
-## Changelog
-- [x] Plan work ✅ 2026-03-06`);
-
-    const { collectWeekEntries } = requireFresh();
-    const result = collectWeekEntries('2026-03-08');
-    assert.equal(result.groups.length, 1);
-    assert.equal(result.groups[0].sourceType, 'plan');
-    assert.equal(result.groups[0].title, 'Standalone Plan');
-  });
-
-  it('skips plans with project field', () => {
-    writePlan('linked.md', `---
-status: active
-project: "[[projects/foo]]"
----
-
-# Linked Plan
-
-## Changelog
-- [x] Should not appear ✅ 2026-03-05`);
-
-    const { collectWeekEntries } = requireFresh();
-    const result = collectWeekEntries('2026-03-08');
-    assert.equal(result.groups.length, 0);
-  });
-
-  it('returns empty groups when nothing matches', () => {
-    writeProject('proj.md', `---
+  it("returns empty groups when nothing matches", () => {
+    writeProject(
+      "proj",
+      `---
 status: active
 ---
 
 # Project
 
 ## Changelog
-- [x] Old entry ✅ 2026-01-01`);
+- [x] Old entry ✅ 2026-01-01`,
+    );
 
     const { collectWeekEntries } = requireFresh();
-    const result = collectWeekEntries('2026-03-08');
+    const result = collectWeekEntries("2026-03-08");
     assert.equal(result.groups.length, 0);
   });
 
-  it('returns correct weekLabel', () => {
+  it("returns correct weekLabel", () => {
     const { collectWeekEntries } = requireFresh();
-    const result = collectWeekEntries('2026-03-08');
-    assert.equal(result.weekLabel, '2026-W10');
+    const result = collectWeekEntries("2026-03-08");
+    assert.equal(result.weekLabel, "2026-W10");
   });
 });
 
-describe('collectDailySummaries', () => {
-  it('collects summaries from daily notes in the week', () => {
-    writeDailyNote('2026-03-05', '## Tasks\n\n## Summary\nWorked on feature X.\n\n## Log\n');
-    writeDailyNote('2026-03-06', '## Tasks\n\n## Summary\nFixed bug Y.\n\n## Log\n');
+describe("collectDailySummaries", () => {
+  it("collects summaries from daily notes in the week", () => {
+    writeDailyNote(
+      "2026-03-05",
+      "## Tasks\n\n## Summary\nWorked on feature X.\n\n## Log\n",
+    );
+    writeDailyNote(
+      "2026-03-06",
+      "## Tasks\n\n## Summary\nFixed bug Y.\n\n## Log\n",
+    );
 
     const { collectDailySummaries } = requireFresh();
-    const result = collectDailySummaries('2026-03-08');
+    const result = collectDailySummaries("2026-03-08");
     assert.equal(result.length, 2);
-    assert.equal(result[0].date, '2026-03-05');
-    assert.ok(result[0].text.includes('feature X'));
-    assert.equal(result[1].date, '2026-03-06');
-    assert.ok(result[1].text.includes('bug Y'));
+    assert.equal(result[0].date, "2026-03-05");
+    assert.ok(result[0].text.includes("feature X"));
+    assert.equal(result[1].date, "2026-03-06");
+    assert.ok(result[1].text.includes("bug Y"));
   });
 
-  it('skips days without daily notes', () => {
-    writeDailyNote('2026-03-05', '## Tasks\n\n## Summary\nSomething.\n\n## Log\n');
+  it("skips days without daily notes", () => {
+    writeDailyNote(
+      "2026-03-05",
+      "## Tasks\n\n## Summary\nSomething.\n\n## Log\n",
+    );
 
     const { collectDailySummaries } = requireFresh();
-    const result = collectDailySummaries('2026-03-08');
+    const result = collectDailySummaries("2026-03-08");
     assert.equal(result.length, 1);
   });
 
-  it('skips daily notes without Summary section', () => {
-    writeDailyNote('2026-03-05', '## Tasks\n\n## Log\n');
+  it("skips daily notes without Summary section", () => {
+    writeDailyNote("2026-03-05", "## Tasks\n\n## Log\n");
 
     const { collectDailySummaries } = requireFresh();
-    const result = collectDailySummaries('2026-03-08');
+    const result = collectDailySummaries("2026-03-08");
     assert.equal(result.length, 0);
   });
 
-  it('returns empty array when no notes exist', () => {
+  it("returns empty array when no notes exist", () => {
     const { collectDailySummaries } = requireFresh();
-    const result = collectDailySummaries('2026-03-08');
+    const result = collectDailySummaries("2026-03-08");
     assert.equal(result.length, 0);
   });
 });
 
-describe('buildWeeklyPrompt', () => {
-  it('includes daily summaries and changelog entries', () => {
+describe("buildWeeklyPrompt", () => {
+  it("includes daily summaries and changelog entries", () => {
     const { buildWeeklyPrompt } = requireFresh();
     const result = buildWeeklyPrompt(
-      '2026-W10',
-      [{ title: 'Project A', sourceType: 'project', entries: ['- [x] Entry 1 ✅ 2026-03-05'] }],
-      [{ date: '2026-03-05', text: 'Worked on Project A.' }],
-      '/tmp/weekly/2026-W10.md'
+      "2026-W10",
+      [
+        {
+          title: "Project A",
+          sourceType: "project",
+          entries: ["- [x] Entry 1 ✅ 2026-03-05"],
+        },
+      ],
+      [{ date: "2026-03-05", text: "Worked on Project A." }],
+      "/tmp/weekly/2026-W10.md",
     );
-    assert.ok(result.includes('2026-W10'));
-    assert.ok(result.includes('Daily summaries'));
-    assert.ok(result.includes('2026-03-05'));
-    assert.ok(result.includes('Worked on Project A'));
-    assert.ok(result.includes('Changelog entries'));
-    assert.ok(result.includes('Project A'));
-    assert.ok(result.includes('Entry 1'));
-    assert.ok(result.includes('/tmp/weekly/2026-W10.md'));
+    assert.ok(result.includes("2026-W10"));
+    assert.ok(result.includes("Daily summaries"));
+    assert.ok(result.includes("2026-03-05"));
+    assert.ok(result.includes("Worked on Project A"));
+    assert.ok(result.includes("Changelog entries"));
+    assert.ok(result.includes("Project A"));
+    assert.ok(result.includes("Entry 1"));
+    assert.ok(result.includes("/tmp/weekly/2026-W10.md"));
   });
 
-  it('handles no daily summaries', () => {
+  it("handles no daily summaries", () => {
     const { buildWeeklyPrompt } = requireFresh();
     const result = buildWeeklyPrompt(
-      '2026-W10',
-      [{ title: 'Project A', sourceType: 'project', entries: ['- [x] Entry ✅ 2026-03-05'] }],
+      "2026-W10",
+      [
+        {
+          title: "Project A",
+          sourceType: "project",
+          entries: ["- [x] Entry ✅ 2026-03-05"],
+        },
+      ],
       [],
-      '/tmp/weekly/2026-W10.md'
+      "/tmp/weekly/2026-W10.md",
     );
-    assert.ok(result.includes('no daily summaries available'));
-  });
-
-  it('prefixes standalone plans with (no project)', () => {
-    const { buildWeeklyPrompt } = requireFresh();
-    const result = buildWeeklyPrompt(
-      '2026-W10',
-      [{ title: 'Orphan', sourceType: 'plan', entries: ['- [x] Work ✅ 2026-03-05'] }],
-      [],
-      '/tmp/weekly/2026-W10.md'
-    );
-    assert.ok(result.includes('(no project) Orphan'));
+    assert.ok(result.includes("no daily summaries available"));
   });
 });
 
-describe('writeWeeklySummary', () => {
-  it('spawns claude with correct prompt and creates file', () => {
-    writeProject('proj.md', `---
+describe("writeWeeklySummary", () => {
+  it("spawns claude with correct prompt and creates file", () => {
+    writeProject(
+      "proj",
+      `---
 status: active
 ---
 
 # Project
 
 ## Changelog
-- [x] Work done ✅ 2026-03-05`);
+- [x] Work done ✅ 2026-03-05`,
+    );
 
-    writeDailyNote('2026-03-05', '## Tasks\n\n## Summary\nDid work.\n\n## Log\n');
+    writeDailyNote(
+      "2026-03-05",
+      "## Tasks\n\n## Summary\nDid work.\n\n## Log\n",
+    );
 
-    const weeklyDir = path.join(tmpDir, 'weekly');
-    const outputPath = path.join(weeklyDir, '2026-W10.md');
-    const stdinFile = path.join(tmpDir, 'claude-stdin.txt');
-    const argsFile = path.join(tmpDir, 'claude-args.txt');
-    const fakeClaude = path.join(tmpDir, 'fake-claude.js');
-    fs.writeFileSync(fakeClaude, [
-      '#!/usr/bin/env node',
-      `const fs = require('fs');`,
-      `fs.writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));`,
-      `let stdin = '';`,
-      `process.stdin.setEncoding('utf-8');`,
-      `process.stdin.on('data', d => stdin += d);`,
-      `process.stdin.on('end', () => {`,
-      `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
-      `  fs.mkdirSync(${JSON.stringify(weeklyDir)}, { recursive: true });`,
-      `  fs.writeFileSync(${JSON.stringify(outputPath)}, '# 2026-W10 Work Summary\\n\\nNarrative here.');`,
-      `});`,
-    ].join('\n'), { mode: 0o755 });
+    const weeklyDir = path.join(tmpDir, "weekly");
+    const outputPath = path.join(weeklyDir, "2026-W10.md");
+    const stdinFile = path.join(tmpDir, "claude-stdin.txt");
+    const argsFile = path.join(tmpDir, "claude-args.txt");
+    const fakeClaude = path.join(tmpDir, "fake-claude.js");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        `const fs = require('fs');`,
+        `fs.writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));`,
+        `let stdin = '';`,
+        `process.stdin.setEncoding('utf-8');`,
+        `process.stdin.on('data', d => stdin += d);`,
+        `process.stdin.on('end', () => {`,
+        `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
+        `  fs.mkdirSync(${JSON.stringify(weeklyDir)}, { recursive: true });`,
+        `  fs.writeFileSync(${JSON.stringify(outputPath)}, '# 2026-W10 Work Summary\\n\\nNarrative here.');`,
+        `});`,
+      ].join("\n"),
+      { mode: 0o755 },
+    );
 
     process.env.WORK_CLAUDE_CMD = fakeClaude;
     const { writeWeeklySummary } = requireFresh();
-    const filePath = writeWeeklySummary('2026-03-08');
+    const filePath = writeWeeklySummary("2026-03-08");
 
     assert.ok(filePath);
-    assert.ok(filePath.endsWith('2026-W10.md'));
+    assert.ok(filePath.endsWith("2026-W10.md"));
     assert.ok(fs.existsSync(filePath));
-    const content = fs.readFileSync(filePath, 'utf-8');
-    assert.ok(content.includes('2026-W10 Work Summary'));
+    const content = fs.readFileSync(filePath, "utf-8");
+    assert.ok(content.includes("2026-W10 Work Summary"));
 
-    const args = JSON.parse(fs.readFileSync(argsFile, 'utf-8'));
-    assert.ok(args.includes('-p'));
-    assert.ok(args.includes('--allowedTools'));
-    assert.ok(args.includes('Write'));
+    const args = JSON.parse(fs.readFileSync(argsFile, "utf-8"));
+    assert.ok(args.includes("-p"));
+    assert.ok(args.includes("--allowedTools"));
+    assert.ok(args.includes("Write"));
 
-    const stdin = fs.readFileSync(stdinFile, 'utf-8');
-    assert.ok(stdin.includes('Daily summaries'));
-    assert.ok(stdin.includes('Did work'));
-    assert.ok(stdin.includes('Changelog entries'));
-    assert.ok(stdin.includes('Work done'));
+    const stdin = fs.readFileSync(stdinFile, "utf-8");
+    assert.ok(stdin.includes("Daily summaries"));
+    assert.ok(stdin.includes("Did work"));
+    assert.ok(stdin.includes("Changelog entries"));
+    assert.ok(stdin.includes("Work done"));
 
     delete process.env.WORK_CLAUDE_CMD;
   });
 
-  it('returns null when no entries and no summaries', () => {
+  it("returns null when no entries and no summaries", () => {
     const { writeWeeklySummary } = requireFresh();
-    const result = writeWeeklySummary('2026-03-08');
+    const result = writeWeeklySummary("2026-03-08");
     assert.equal(result, null);
-    assert.ok(!fs.existsSync(path.join(tmpDir, 'weekly')));
+    assert.ok(!fs.existsSync(path.join(tmpDir, "weekly")));
   });
 });
