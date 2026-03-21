@@ -115,7 +115,7 @@ function completeProjects() {
       return c;
     });
     const title = getTitle(content) || slug;
-    completed.push({ file: `${slug}.md`, title });
+    completed.push({ file: `${slug}/project.md`, title });
     console.log(`completed: ${title} (${slug})`);
   }
   return completed;
