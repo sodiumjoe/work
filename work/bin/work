@@ -6,9 +6,9 @@ const path = require('node:path');
 const LIB = path.join(__dirname, '..', 'lib');
 const { ensure, logSyncEntries, inject, injectReviews } = require(path.join(LIB, 'daily.js'));
 const { fetchReviews, fetchReviewsAsync } = require(path.join(LIB, 'reviews.js'));
-const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, PLAN_DIR } = require(path.join(LIB, 'paths.js'));
-const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState, scanOrphanedPlans } = require(path.join(LIB, 'scan.js'));
-const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, archivePlan, listProjects } = require(path.join(LIB, 'project.js'));
+const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, projectDir, projectFile } = require(path.join(LIB, 'paths.js'));
+const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState } = require(path.join(LIB, 'scan.js'));
+const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, listProjects } = require(path.join(LIB, 'project.js'));
 const { writeWeeklySummary, isoWeek } = require(path.join(LIB, 'summary.js'));
 const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
 const { parse, serialize, appendToSection, extractSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
@@ -71,7 +71,7 @@ function syslog(level, msg) {
 
 function doErrorDebug(dateStr, errors) {
   const { execFileSync } = require('node:child_process');
-  const workProjectPath = path.join(PROJECT_DIR, 'work.md');
+  const workProjectPath = projectFile('work');
   if (fs.existsSync(workProjectPath)) {
     const content = fs.readFileSync(workProjectPath, 'utf-8');
     if (/^- \[[ /]\] Fix tick error:/m.test(content)) return;
@@ -84,13 +84,13 @@ ${errors.map(e => `- ${e}`).join('\n')}
 The tick source code is at work/bin/work.
 
 Investigate the root cause by reading the relevant source files. Then:
-1. Create a plan file at ${PLAN_DIR}/${dateStr}-tick-error.md with this frontmatter:
+1. Create a plan file at ${projectDir('work')}/${dateStr}-tick-error.md with this frontmatter:
    ---
    status: active
-   project: "[[projects/work]]"
+   project: "[[projects/work/project]]"
    ---
 2. Add a task to the work project file at ${workProjectPath}. Use the Edit tool to append a line to the ## Tasks section:
-   - [ ] Fix tick error: <one-line summary> — [[plans/${dateStr}-tick-error]]`;
+   - [ ] Fix tick error: <one-line summary> — [[${dateStr}-tick-error]]`;
 
   try {
     const claudeCmd = process.env.WORK_CLAUDE_CMD || 'claude';
@@ -120,7 +120,7 @@ function doWrap(dateStr) {
   const np = notePath(dateStr);
   const prompt = `Read the daily note at ${np}.
 
-For each wikilinked project or plan referenced in the Log and Tasks sections, read that file to understand what the work items actually are. Projects are in ${PROJECT_DIR}. Plans are in ${PLAN_DIR}.
+For each wikilinked project or plan referenced in the Log and Tasks sections, read that file to understand what the work items actually are. Projects are in ${PROJECT_DIR} (each project is a subdirectory containing project.md and its plans).
 
 Then write a comprehensive summary into the ## Summary section of the daily note (replace existing content if the section exists, or append it at the end).
 
@@ -322,16 +322,8 @@ const commands = {
     const content = fs.readFileSync(filePath, 'utf-8');
     sourceTitle = getTitle(content);
 
-    if (filePath.includes('/projects/')) {
-      sourceType = 'project';
-      sourceSlug = path.basename(filePath, '.md');
-    } else if (filePath.includes('/plans/')) {
-      sourceType = 'plan';
-      sourceSlug = path.basename(filePath, '.md');
-    } else {
-      sourceType = 'unknown';
-      sourceSlug = path.basename(filePath, '.md');
-    }
+    sourceType = 'project';
+    sourceSlug = path.basename(path.dirname(filePath));
 
     // Append to daily log
     appendLog(dateStr, description, sourceType, sourceSlug, sourceTitle);
@@ -376,10 +368,6 @@ const commands = {
           const slug = item.key.replace(/^projects\//, '');
           archiveProject(slug);
           log(`archived project: ${slug}`);
-        } else if (item.key.startsWith('plans/')) {
-          const name = item.key.replace(/^plans\//, '');
-          archivePlan(name);
-          log(`archived plan: ${name}`);
         } else {
           log(`unknown archive key: ${item.key}`);
         }
@@ -397,22 +385,20 @@ const commands = {
     if (!fs.existsSync(weeklyPath)) {
       log('=== propose archivable ===');
       try {
-        const projFiles = fs.existsSync(PROJECT_DIR)
-          ? fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md')
+        const projEntries = fs.existsSync(PROJECT_DIR)
+          ? fs.readdirSync(PROJECT_DIR, { withFileTypes: true }).filter(e => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('-'))
           : [];
         const items = [];
-        for (const f of projFiles) {
-          const content = fs.readFileSync(path.join(PROJECT_DIR, f), 'utf-8');
+        for (const entry of projEntries) {
+          const slug = entry.name;
+          const pf = projectFile(slug);
+          if (!fs.existsSync(pf)) continue;
+          const content = fs.readFileSync(pf, 'utf-8');
           const fm = parseFrontmatter(content);
           if (fm.status !== 'completed') continue;
-          const slug = f.replace('.md', '');
           const title = getTitle(content) || slug;
           const completedAt = fm.completed_at || 'unknown';
-          items.push({ key: `projects/${slug}`, label: `[[projects/${slug}|${title}]] — completed ${completedAt}` });
-        }
-        const orphans = scanOrphanedPlans();
-        for (const o of orphans) {
-          items.push({ key: `plans/${o.name}`, label: `${o.title} — orphaned plan` });
+          items.push({ key: `projects/${slug}`, label: `[[projects/${slug}/project|${title}]] — completed ${completedAt}` });
         }
         if (items.length > 0) {
           const count = enqueue(dateStr, 'Archive', items);
@@ -474,7 +460,7 @@ const commands = {
   paths() {
     const { positional } = parseOpts(args.slice(1));
     const key = positional[0];
-    const map = { vault: VAULT_ROOT, plans: PLAN_DIR, projects: PROJECT_DIR };
+    const map = { vault: VAULT_ROOT, projects: PROJECT_DIR };
     if (!key || !map[key]) {
       for (const [k, v] of Object.entries(map)) console.log(`${k}\t${v}`);
     } else {
@@ -503,7 +489,7 @@ Commands:
   create-project <slug> <title> Create a new project file
   archive-project <slug>       Archive project and associated plans
   resolve-project <plan-file>  Find project file from plan frontmatter
-  paths [vault|plans|projects]  Print configured paths
+  paths [vault|projects]         Print configured paths
   parse-changelog <file> <pat> Extract matching changelog lines (TSV)
   help                         Show this help
 
