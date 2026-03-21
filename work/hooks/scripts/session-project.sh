@@ -6,7 +6,7 @@ if [ -z "$CLAUDE_PROJECT" ]; then
   exit 0
 fi
 
-PROJECT_FILE="$HOME/stripe/work/projects/$CLAUDE_PROJECT.md"
+PROJECT_FILE="$HOME/stripe/work/projects/$CLAUDE_PROJECT/project.md"
 
 if [ ! -f "$PROJECT_FILE" ]; then
   exit 0
