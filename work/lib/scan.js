@@ -1,55 +1,57 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const { extractSection, findSectionLineRange, parseFrontmatter, getTitle } = require('./markdown.js');
-const { atomicRewrite } = require('./atomic.js');
-const { PLAN_DIR, PROJECT_DIR, notePath } = require('./paths.js');
+const fs = require("node:fs");
+const path = require("node:path");
+const {
+  extractSection,
+  findSectionLineRange,
+  parseFrontmatter,
+  getTitle,
+} = require("./markdown.js");
+const { atomicRewrite } = require("./atomic.js");
+const { PROJECT_DIR, projectFile, notePath } = require("./paths.js");
 
 function scanOpenItems() {
   const results = [];
-  if (fs.existsSync(PLAN_DIR)) {
-    const files = fs.readdirSync(PLAN_DIR).filter(f => f.endsWith('.md'));
-    for (const f of files) {
-      const filePath = path.join(PLAN_DIR, f);
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const fm = parseFrontmatter(content);
-      const changelog = extractSection(content, 'Changelog');
-      const title = getTitle(content);
-      let projectSlug = null;
-      if (fm.project) {
-        projectSlug = fm.project.replace(/^\[\[/, '').replace(/\]\]$/, '').replace(/^projects\//, '');
-      }
-      for (const line of changelog) {
-        if (/^- \[[ /]\] /.test(line)) {
-          const state = line.match(/^- \[(.)\]/)[1];
-          const item = line.replace(/^- \[.\] /, '');
-          results.push({ filename: f, title, itemText: item, sourceType: 'plan', state, projectSlug });
-        }
-      }
-    }
-  }
   if (fs.existsSync(PROJECT_DIR)) {
-    const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md');
-    for (const f of files) {
-      const filePath = path.join(PROJECT_DIR, f);
-      const content = fs.readFileSync(filePath, 'utf-8');
+    const entries = fs.readdirSync(PROJECT_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith("_") || entry.name.startsWith("-")) continue;
+      const slug = entry.name;
+      const filePath = projectFile(slug);
+      if (!fs.existsSync(filePath)) continue;
+      const content = fs.readFileSync(filePath, "utf-8");
       const fm = parseFrontmatter(content);
-      const evergreen = fm.status === 'evergreen';
-      if (fm.status !== 'active' && !evergreen) continue;
-      const tasks = extractSection(content, 'Tasks');
+      const evergreen = fm.status === "evergreen";
+      if (fm.status !== "active" && !evergreen) continue;
+      const tasks = extractSection(content, "Tasks");
       const title = getTitle(content);
-      const slug = f.replace('.md', '');
       let hasOpenTasks = false;
       for (const line of tasks) {
         if (/^- \[[ /]\] /.test(line)) {
           const state = line.match(/^- \[(.)\]/)[1];
-          const item = line.replace(/^- \[.\] /, '');
-          results.push({ filename: f, title, itemText: item, sourceType: 'project', state, projectSlug: slug, evergreen });
+          const item = line.replace(/^- \[.\] /, "");
+          results.push({
+            filename: `${slug}.md`,
+            title,
+            itemText: item,
+            sourceType: "project",
+            state,
+            projectSlug: slug,
+            evergreen,
+          });
           hasOpenTasks = true;
         }
       }
-      // For evergreen projects with no open tasks, add a placeholder item so they show up in daily note
       if (evergreen && !hasOpenTasks) {
-        results.push({ filename: f, title, itemText: '', sourceType: 'project', state: ' ', projectSlug: slug, evergreen: true });
+        results.push({
+          filename: `${slug}.md`,
+          title,
+          itemText: "",
+          sourceType: "project",
+          state: " ",
+          projectSlug: slug,
+          evergreen: true,
+        });
       }
     }
   }
@@ -57,52 +59,48 @@ function scanOpenItems() {
 }
 
 function formatScanTSV(results) {
-  return results.map(r =>
-    `${r.filename}\t${r.title}\t${r.itemText}\t${r.sourceType}\t${r.state}\t${r.projectSlug || ''}`
-  ).join('\n');
+  return results
+    .map(
+      (r) =>
+        `${r.filename}\t${r.title}\t${r.itemText}\t${r.sourceType}\t${r.state}\t${r.projectSlug || ""}`,
+    )
+    .join("\n");
 }
 
 function syncCheck(dateStr) {
   const results = [];
-  if (fs.existsSync(PLAN_DIR)) {
-    const files = fs.readdirSync(PLAN_DIR).filter(f => f.endsWith('.md'));
-    for (const f of files) {
-      const filePath = path.join(PLAN_DIR, f);
-      const content = fs.readFileSync(filePath, 'utf-8');
-      if (!content.includes(`✅ ${dateStr}`)) continue;
-      const changelog = extractSection(content, 'Changelog');
-      const title = getTitle(content);
-      for (const line of changelog) {
-        if (line.includes(`✅ ${dateStr}`)) {
-          const item = line.replace(/^- \[x\] /, '');
-          results.push({ filename: f, title, itemText: item, sourceType: 'plan' });
-        }
-      }
-    }
-  }
   if (fs.existsSync(PROJECT_DIR)) {
-    const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md');
-    for (const f of files) {
-      const filePath = path.join(PROJECT_DIR, f);
-      const content = fs.readFileSync(filePath, 'utf-8');
+    const entries = fs.readdirSync(PROJECT_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith("_") || entry.name.startsWith("-")) continue;
+      const slug = entry.name;
+      const filePath = projectFile(slug);
+      if (!fs.existsSync(filePath)) continue;
+      const content = fs.readFileSync(filePath, "utf-8");
       if (!content.includes(`✅ ${dateStr}`)) continue;
-      const changelog = extractSection(content, 'Changelog');
+      const changelog = extractSection(content, "Changelog");
       const title = getTitle(content);
       for (const line of changelog) {
         if (line.includes(`✅ ${dateStr}`)) {
-          const item = line.replace(/^- \[x\] /, '');
-          results.push({ filename: f, title, itemText: item, sourceType: 'project' });
+          const item = line.replace(/^- \[x\] /, "");
+          results.push({
+            filename: `${slug}.md`,
+            title,
+            itemText: item,
+            sourceType: "project",
+          });
         }
       }
     }
   }
   const dailyNote = notePath(dateStr);
   if (!fs.existsSync(dailyNote) || results.length === 0) return results;
-  const dailyContent = fs.readFileSync(dailyNote, 'utf-8');
-  const logLines = extractSection(dailyContent, 'Log');
-  const logText = logLines.join('\n');
-  return results.filter(r => {
-    const textWithoutDate = r.itemText.replace(/ ✅ \d{4}-\d{2}-\d{2}$/, '');
+  const dailyContent = fs.readFileSync(dailyNote, "utf-8");
+  const logLines = extractSection(dailyContent, "Log");
+  const logText = logLines.join("\n");
+  return results.filter((r) => {
+    const textWithoutDate = r.itemText.replace(/ ✅ \d{4}-\d{2}-\d{2}$/, "");
     return !logText.includes(textWithoutDate);
   });
 }
@@ -111,35 +109,45 @@ function listTasks(filePath) {
   const results = [];
   if (filePath) {
     if (!fs.existsSync(filePath)) return results;
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.split('\n');
+    const content = fs.readFileSync(filePath, "utf-8");
+    const lines = content.split("\n");
     const title = getTitle(content);
-    const range = findSectionLineRange(lines, 'Tasks');
+    const range = findSectionLineRange(lines, "Tasks");
     if (!range) return results;
     for (let i = range.start + 1; i < range.end; i++) {
       if (/^- \[[ /]\] /.test(lines[i])) {
         const state = lines[i].match(/^- \[(.)\]/)[1];
-        const description = lines[i].replace(/^- \[.\] /, '');
-        results.push({ file: filePath, line: i + 1, state, title, description });
+        const description = lines[i].replace(/^- \[.\] /, "");
+        results.push({
+          file: filePath,
+          line: i + 1,
+          state,
+          title,
+          description,
+        });
       }
     }
     return results;
   }
   if (!fs.existsSync(PROJECT_DIR)) return results;
-  const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md');
-  for (const f of files) {
-    const fp = path.join(PROJECT_DIR, f);
-    const content = fs.readFileSync(fp, 'utf-8');
+  const entries = fs.readdirSync(PROJECT_DIR, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith("_") || entry.name.startsWith("-")) continue;
+    const slug = entry.name;
+    const fp = projectFile(slug);
+    if (!fs.existsSync(fp)) continue;
+    const content = fs.readFileSync(fp, "utf-8");
     const fm = parseFrontmatter(content);
-    if (fm.status !== 'active' && fm.status !== 'evergreen') continue;
-    const lines = content.split('\n');
+    if (fm.status !== "active" && fm.status !== "evergreen") continue;
+    const lines = content.split("\n");
     const title = getTitle(content);
-    const range = findSectionLineRange(lines, 'Tasks');
+    const range = findSectionLineRange(lines, "Tasks");
     if (!range) continue;
     for (let i = range.start + 1; i < range.end; i++) {
       if (/^- \[[ /]\] /.test(lines[i])) {
         const state = lines[i].match(/^- \[(.)\]/)[1];
-        const description = lines[i].replace(/^- \[.\] /, '');
+        const description = lines[i].replace(/^- \[.\] /, "");
         results.push({ file: fp, line: i + 1, state, title, description });
       }
     }
@@ -151,9 +159,10 @@ function setTaskState(filePath, lineNum, state, dateStr) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`file not found: ${filePath}`);
   }
-  const stateChar = state === 'open' ? ' ' : state === 'in-progress' ? '/' : 'x';
-  atomicRewrite(filePath, content => {
-    const lines = content.split('\n');
+  const stateChar =
+    state === "open" ? " " : state === "in-progress" ? "/" : "x";
+  atomicRewrite(filePath, (content) => {
+    const lines = content.split("\n");
     const idx = lineNum - 1;
     if (idx < 0 || idx >= lines.length) {
       throw new Error(`line ${lineNum} out of range`);
@@ -161,35 +170,17 @@ function setTaskState(filePath, lineNum, state, dateStr) {
     if (!/^- \[.\] /.test(lines[idx])) {
       throw new Error(`line ${lineNum} is not a checkbox item`);
     }
-    let text = lines[idx].replace(/^- \[.\] /, '');
-    if (state === 'done') {
+    let text = lines[idx].replace(/^- \[.\] /, "");
+    if (state === "done") {
       if (!/ ✅ \d{4}-\d{2}-\d{2}$/.test(text)) {
         text = `${text} ✅ ${dateStr}`;
       }
     } else {
-      text = text.replace(/ ✅ \d{4}-\d{2}-\d{2}$/, '');
+      text = text.replace(/ ✅ \d{4}-\d{2}-\d{2}$/, "");
     }
     lines[idx] = `- [${stateChar}] ${text}`;
-    return lines.join('\n');
+    return lines.join("\n");
   });
-}
-
-function scanOrphanedPlans() {
-  if (!fs.existsSync(PLAN_DIR)) return [];
-  const files = fs.readdirSync(PLAN_DIR).filter(f => f.endsWith('.md'));
-  const results = [];
-  for (const f of files) {
-    const content = fs.readFileSync(path.join(PLAN_DIR, f), 'utf-8');
-    const fm = parseFrontmatter(content);
-    if (fm.project) continue;
-    const changelog = extractSection(content, 'Changelog');
-    const open = changelog.filter(l => /^- \[[ /]\] /.test(l));
-    const done = changelog.filter(l => /^- \[x\] /.test(l));
-    if (open.length > 0 || done.length === 0) continue;
-    const title = getTitle(content) || f.replace('.md', '');
-    results.push({ name: f.replace('.md', ''), title });
-  }
-  return results;
 }
 
 module.exports = {
@@ -198,5 +189,4 @@ module.exports = {
   syncCheck,
   listTasks,
   setTaskState,
-  scanOrphanedPlans,
 };
