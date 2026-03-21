@@ -1,20 +1,30 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const { parseFrontmatter, extractSection, getTitle } = require('./markdown.js');
-const { PROJECT_DIR, VAULT_ROOT, PLAN_DIR, todayStr } = require('./paths.js');
-const { atomicRewrite } = require('./atomic.js');
+const fs = require("node:fs");
+const path = require("node:path");
+const { parseFrontmatter, extractSection, getTitle } = require("./markdown.js");
+const {
+  PROJECT_DIR,
+  VAULT_ROOT,
+  projectDir,
+  projectFile,
+  todayStr,
+} = require("./paths.js");
+const { atomicRewrite } = require("./atomic.js");
 
 function createProject(slug, title) {
   if (!slug || /[\s/]/.test(slug)) {
-    throw new Error('invalid slug: must be non-empty, no spaces, no /');
+    throw new Error("invalid slug: must be non-empty, no spaces, no /");
   }
-  const target = path.join(PROJECT_DIR, `${slug}.md`);
+  const dir = projectDir(slug);
+  const target = projectFile(slug);
   if (fs.existsSync(target)) {
     throw new Error(`exists: ${target}`);
   }
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, `---
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    target,
+    `---
 status: active
+id: ${slug}
 ---
 
 # ${title}
@@ -27,34 +37,37 @@ status: active
 
 ## Changelog
 
-## Notes`);
+## Notes`,
+  );
   console.log(target);
 }
 
 function resolveProject(planFile) {
   if (!planFile || !fs.existsSync(planFile)) return;
-  const content = fs.readFileSync(planFile, 'utf-8');
+  const content = fs.readFileSync(planFile, "utf-8");
   const fm = parseFrontmatter(content);
   if (!fm.project) return;
   let project = fm.project;
-  project = project.replace(/^\[\[/, '').replace(/\]\]$/, '');
-  const projFile = path.join(VAULT_ROOT, `${project}.md`);
-  if (fs.existsSync(projFile)) {
-    console.log(projFile);
+  project = project.replace(/^\[\[/, "").replace(/\]\]$/, "");
+  const slug = project.replace(/^projects\//, "").replace(/\/project$/, "");
+  const newPath = projectFile(slug);
+  if (fs.existsSync(newPath)) {
+    console.log(newPath);
     return;
   }
-  const fallback = path.join(process.env.HOME, '.claude', `${project}.md`);
-  if (fs.existsSync(fallback)) {
-    console.log(fallback);
+  const legacyPath = path.join(VAULT_ROOT, `${project}.md`);
+  if (fs.existsSync(legacyPath)) {
+    console.log(legacyPath);
+    return;
   }
 }
 
 function parseChangelog(filePath, pattern) {
   if (!fs.existsSync(filePath)) return;
-  const content = fs.readFileSync(filePath, 'utf-8');
+  const content = fs.readFileSync(filePath, "utf-8");
   const title = getTitle(content);
   const base = path.basename(filePath);
-  const changelog = extractSection(content, 'Changelog');
+  const changelog = extractSection(content, "Changelog");
   let re;
   try {
     re = new RegExp(pattern);
@@ -70,85 +83,73 @@ function parseChangelog(filePath, pattern) {
 
 function completeProjects() {
   if (!fs.existsSync(PROJECT_DIR)) return [];
-  const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md'));
+  const entries = fs.readdirSync(PROJECT_DIR, { withFileTypes: true });
   const completed = [];
-  for (const file of files) {
-    const filePath = path.join(PROJECT_DIR, file);
-    const content = fs.readFileSync(filePath, 'utf-8');
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith("_") || entry.name.startsWith("-")) continue;
+    const slug = entry.name;
+    const filePath = projectFile(slug);
+    if (!fs.existsSync(filePath)) continue;
+    const content = fs.readFileSync(filePath, "utf-8");
     const fm = parseFrontmatter(content);
-    if (fm.status === 'completed') continue;
-    if (fm.status === 'evergreen') continue;
-    if (fm.permanent === 'true' || fm.permanent === true) continue;
-    const tasks = extractSection(content, 'Tasks');
-    const openTasks = tasks.filter(l => /^- \[[ /]\]/.test(l));
+    if (fm.status === "completed") continue;
+    if (fm.status === "evergreen") continue;
+    if (fm.permanent === "true" || fm.permanent === true) continue;
+    const tasks = extractSection(content, "Tasks");
+    const openTasks = tasks.filter((l) => /^- \[[ /]\]/.test(l));
     if (openTasks.length > 0) continue;
-    const changelog = extractSection(content, 'Changelog');
-    const openChangelog = changelog.filter(l => /^- \[ \]/.test(l));
-    const done = changelog.filter(l => /^- \[x\]/.test(l));
+    const changelog = extractSection(content, "Changelog");
+    const openChangelog = changelog.filter((l) => /^- \[ \]/.test(l));
+    const done = changelog.filter((l) => /^- \[x\]/.test(l));
     if (done.length === 0) continue;
     if (openChangelog.length > 0) continue;
-    atomicRewrite(filePath, c => {
-      c = c.replace(/^status:\s*active\s*$/m, 'status: completed');
+    atomicRewrite(filePath, (c) => {
+      c = c.replace(/^status:\s*active\s*$/m, "status: completed");
       if (!/^completed_at:/m.test(c)) {
-        c = c.replace(/^status:\s*completed\s*$/m, `status: completed\ncompleted_at: ${todayStr()}`);
+        c = c.replace(
+          /^status:\s*completed\s*$/m,
+          `status: completed\ncompleted_at: ${todayStr()}`,
+        );
       }
       return c;
     });
-    const title = getTitle(content) || file;
-    completed.push({ file, title });
-    console.log(`completed: ${title} (${file})`);
+    const title = getTitle(content) || slug;
+    completed.push({ file: `${slug}.md`, title });
+    console.log(`completed: ${title} (${slug})`);
   }
   return completed;
 }
 
 function archiveProject(slug) {
-  const src = path.join(PROJECT_DIR, `${slug}.md`);
-  if (!fs.existsSync(src)) throw new Error(`not found: ${src}`);
-  const archiveProjectDir = path.join(VAULT_ROOT, 'archive', 'projects');
+  const srcDir = projectDir(slug);
+  const srcFile = projectFile(slug);
+  if (!fs.existsSync(srcFile)) throw new Error(`not found: ${srcFile}`);
+  const archiveProjectDir = path.join(VAULT_ROOT, "archive", "projects");
   fs.mkdirSync(archiveProjectDir, { recursive: true });
-  fs.renameSync(src, path.join(archiveProjectDir, `${slug}.md`));
+  const destDir = path.join(archiveProjectDir, slug);
+  fs.renameSync(srcDir, destDir);
   console.log(`archived project: ${slug}`);
-  const archiveDir = path.join(VAULT_ROOT, 'archive');
-  if (fs.existsSync(PLAN_DIR)) {
-    const plans = fs.readdirSync(PLAN_DIR).filter(f => f.endsWith('.md'));
-    for (const f of plans) {
-      const planPath = path.join(PLAN_DIR, f);
-      const content = fs.readFileSync(planPath, 'utf-8');
-      const fm = parseFrontmatter(content);
-      if (!fm.project) continue;
-      const projSlug = fm.project.replace(/^\[\[/, '').replace(/\]\]$/, '').replace(/^projects\//, '');
-      if (projSlug === slug) {
-        fs.renameSync(planPath, path.join(archiveDir, f));
-        console.log(`archived plan: ${f}`);
-      }
-    }
-  }
 }
 
 function listProjects() {
   if (!fs.existsSync(PROJECT_DIR)) return [];
-  const files = fs.readdirSync(PROJECT_DIR).filter(f => f.endsWith('.md') && f !== '_template.md');
+  const entries = fs.readdirSync(PROJECT_DIR, { withFileTypes: true });
   const results = [];
-  for (const file of files) {
-    const filePath = path.join(PROJECT_DIR, file);
-    const content = fs.readFileSync(filePath, 'utf-8');
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith("_") || entry.name.startsWith("-")) continue;
+    const slug = entry.name;
+    const filePath = projectFile(slug);
+    if (!fs.existsSync(filePath)) continue;
+    const content = fs.readFileSync(filePath, "utf-8");
     const fm = parseFrontmatter(content);
-    const status = fm.status || 'active';
-    if (status !== 'active' && status !== 'evergreen') continue;
-    const slug = file.replace('.md', '');
+    const status = fm.status || "active";
+    if (status !== "active" && status !== "evergreen") continue;
     const title = getTitle(content) || slug;
     results.push({ slug, title, status });
   }
   return results;
-}
-
-function archivePlan(name) {
-  const src = path.join(PLAN_DIR, `${name}.md`);
-  if (!fs.existsSync(src)) throw new Error(`not found: ${src}`);
-  const archiveDir = path.join(VAULT_ROOT, 'archive');
-  fs.mkdirSync(archiveDir, { recursive: true });
-  fs.renameSync(src, path.join(archiveDir, `${name}.md`));
-  console.log(`archived plan: ${name}`);
 }
 
 module.exports = {
@@ -157,6 +158,5 @@ module.exports = {
   parseChangelog,
   completeProjects,
   archiveProject,
-  archivePlan,
   listProjects,
 };
