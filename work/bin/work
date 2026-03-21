@@ -468,6 +468,62 @@ const commands = {
     }
   },
 
+  'check-upstream'() {
+    const crypto = require('node:crypto');
+    const skillsDir = path.join(__dirname, '..', 'skills');
+    if (!fs.existsSync(skillsDir)) {
+      console.log('no skills directory found');
+      return;
+    }
+    const skillDirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter(e => e.isDirectory());
+    let drifted = 0;
+    for (const dir of skillDirs) {
+      const skillFile = path.join(skillsDir, dir.name, 'SKILL.md');
+      if (!fs.existsSync(skillFile)) continue;
+      const content = fs.readFileSync(skillFile, 'utf-8');
+      const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (!fmMatch) continue;
+      const fm = fmMatch[1];
+      const pluginMatch = fm.match(/plugin:\s*(.+)/);
+      const versionMatch = fm.match(/version:\s*(.+)/);
+      const skillMatch = fm.match(/skill:\s*(.+)/);
+      const hashMatch = fm.match(/content_hash:\s*(.+)/);
+      if (!pluginMatch || !hashMatch || !skillMatch) continue;
+      const plugin = pluginMatch[1].trim();
+      const storedHash = hashMatch[1].trim();
+      const upstreamSkill = skillMatch[1].trim();
+      const [pluginName, registry] = plugin.split('@');
+      const cacheBase = path.join(process.env.HOME, '.claude', 'plugins', 'cache', registry || '', pluginName);
+      if (!fs.existsSync(cacheBase)) {
+        console.log(`${dir.name}: upstream cache not found at ${cacheBase}`);
+        continue;
+      }
+      const versions = fs.readdirSync(cacheBase, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name).sort();
+      if (versions.length === 0) continue;
+      const latestVersion = versions[versions.length - 1];
+      const upstreamFile = path.join(cacheBase, latestVersion, 'skills', upstreamSkill, 'SKILL.md');
+      if (!fs.existsSync(upstreamFile)) {
+        console.log(`${dir.name}: upstream skill file not found at ${upstreamFile}`);
+        continue;
+      }
+      const upstreamContent = fs.readFileSync(upstreamFile, 'utf-8');
+      const currentHash = crypto.createHash('sha256').update(upstreamContent).digest('hex');
+      if (currentHash !== storedHash) {
+        console.log(`${dir.name}: DRIFT DETECTED (forked: ${storedHash.slice(0, 8)}… current: ${currentHash.slice(0, 8)}…)`);
+        if (versionMatch) {
+          const forkedVersion = versionMatch[1].trim();
+          if (forkedVersion !== latestVersion) {
+            console.log(`  version changed: ${forkedVersion} → ${latestVersion}`);
+          }
+        }
+        drifted++;
+      } else {
+        console.log(`${dir.name}: up to date`);
+      }
+    }
+    if (drifted > 0) process.exitCode = 1;
+  },
+
   help() {
     console.log(`work - daily workflow CLI
 
@@ -491,6 +547,7 @@ Commands:
   resolve-project <plan-file>  Find project file from plan frontmatter
   paths [vault|projects]         Print configured paths
   parse-changelog <file> <pat> Extract matching changelog lines (TSV)
+  check-upstream               Check forked skills for upstream changes
   help                         Show this help
 
 Options:
