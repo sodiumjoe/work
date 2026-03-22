@@ -9,7 +9,7 @@ const {
 const { atomicRewrite } = require("./atomic.js");
 const { notePath } = require("./paths.js");
 
-function checkOff(filePath, description, dateStr) {
+function checkOff(filePath, description, dateStr, { quiet } = {}) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`file not found: ${filePath}`);
   }
@@ -59,11 +59,18 @@ function checkOff(filePath, description, dateStr) {
     appendToSection(doc, "Changelog", [entry]);
     return serialize(doc);
   });
-  console.log(`${action}: ${description}`);
+  if (!quiet) console.log(`${action}: ${description}`);
   return action;
 }
 
-function appendLog(dateStr, description, sourceType, sourceSlug, sourceTitle) {
+function appendLog(
+  dateStr,
+  description,
+  sourceType,
+  sourceSlug,
+  sourceTitle,
+  { quiet } = {},
+) {
   const dailyNote = notePath(dateStr);
   if (!fs.existsSync(dailyNote)) {
     throw new Error("no daily note found");
@@ -82,7 +89,7 @@ function appendLog(dateStr, description, sourceType, sourceSlug, sourceTitle) {
     appendToSection(doc, "Log", [entry]);
     return serialize(doc);
   });
-  console.log(entry);
+  if (!quiet) console.log(entry);
 }
 
 module.exports = { checkOff, appendLog };

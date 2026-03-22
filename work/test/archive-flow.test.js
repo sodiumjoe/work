@@ -5,81 +5,86 @@ const path = require("node:path");
 const os = require("node:os");
 const { execFileSync } = require("node:child_process");
 
-let tmpDir;
-let origVault;
-let origXdg;
-const workBin = path.join(__dirname, "..", "bin", "work");
+describe("archive-flow", { concurrency: 1 }, () => {
+  let tmpDir;
+  let origVault;
+  let origXdg;
+  const workBin = path.join(__dirname, "..", "bin", "work");
 
-beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "archive-flow-"));
-  fs.mkdirSync(path.join(tmpDir, "projects"));
-  fs.mkdirSync(path.join(tmpDir, "config", "work"), { recursive: true });
-  fs.writeFileSync(
-    path.join(tmpDir, "config", "work", "config.json"),
-    JSON.stringify({}),
-  );
-  origVault = process.env.WORK_VAULT;
-  origXdg = process.env.XDG_CONFIG_HOME;
-  process.env.WORK_VAULT = tmpDir;
-  process.env.XDG_CONFIG_HOME = path.join(tmpDir, "config");
-});
-
-afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-  if (origVault === undefined) {
-    delete process.env.WORK_VAULT;
-  } else {
-    process.env.WORK_VAULT = origVault;
+  function setup() {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "archive-flow-"));
+    fs.mkdirSync(path.join(tmpDir, "projects"));
+    fs.mkdirSync(path.join(tmpDir, "config", "work"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "config", "work", "config.json"),
+      JSON.stringify({}),
+    );
+    origVault = process.env.WORK_VAULT;
+    origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.WORK_VAULT = tmpDir;
+    process.env.XDG_CONFIG_HOME = path.join(tmpDir, "config");
   }
-  if (origXdg === undefined) {
-    delete process.env.XDG_CONFIG_HOME;
-  } else {
-    process.env.XDG_CONFIG_HOME = origXdg;
+
+  function teardown() {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (origVault === undefined) {
+      delete process.env.WORK_VAULT;
+    } else {
+      process.env.WORK_VAULT = origVault;
+    }
+    if (origXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = origXdg;
+    }
   }
-});
 
-function writeProject(slug, content) {
-  const dir = path.join(tmpDir, "projects", slug);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "project.md"), content);
-}
+  function writeProject(slug, content) {
+    const dir = path.join(tmpDir, "projects", slug);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "project.md"), content);
+  }
 
-function projectPath(slug) {
-  return path.join(tmpDir, "projects", slug, "project.md");
-}
+  function projectPath(slug) {
+    return path.join(tmpDir, "projects", slug, "project.md");
+  }
 
-function writeDailyNote(dateStr, content) {
-  fs.writeFileSync(path.join(tmpDir, `${dateStr}.md`), content);
-}
+  function writeDailyNote(dateStr, content) {
+    fs.writeFileSync(path.join(tmpDir, `${dateStr}.md`), content);
+  }
 
-function readDailyNote(dateStr) {
-  return fs.readFileSync(path.join(tmpDir, `${dateStr}.md`), "utf-8");
-}
+  function readDailyNote(dateStr) {
+    return fs.readFileSync(path.join(tmpDir, `${dateStr}.md`), "utf-8");
+  }
 
-function runWork(...args) {
-  return runWorkEnv({}, ...args);
-}
+  function runWork(...args) {
+    return runWorkEnv({}, ...args);
+  }
 
-function runWorkEnv(extraEnv, ...args) {
-  return execFileSync("node", [workBin, ...args], {
-    env: {
-      ...process.env,
-      WORK_VAULT: tmpDir,
-      XDG_CONFIG_HOME: path.join(tmpDir, "config"),
-      WORK_TEST_HOUR: "10",
-      WORK_SKIP_REVIEWS: "1",
-      ...extraEnv,
-    },
-    encoding: "utf-8",
-    timeout: 10000,
-  });
-}
+  function runWorkEnv(extraEnv, ...args) {
+    return execFileSync("node", [workBin, ...args], {
+      env: {
+        ...process.env,
+        WORK_VAULT: tmpDir,
+        XDG_CONFIG_HOME: path.join(tmpDir, "config"),
+        WORK_TEST_HOUR: "10",
+        WORK_SKIP_REVIEWS: "1",
+        CLAUDECODE: "",
+        ...extraEnv,
+      },
+      encoding: "utf-8",
+      timeout: 10000,
+    });
+  }
 
-describe("work archive-project CLI", () => {
-  it("archives project via CLI", () => {
-    writeProject(
-      "test-proj",
-      `---
+  describe("work archive-project CLI", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("archives project via CLI", () => {
+      writeProject(
+        "test-proj",
+        `---
 status: completed
 ---
 
@@ -87,28 +92,31 @@ status: completed
 
 ## Changelog
 - [x] Item ✅ 2026-03-01`,
-    );
+      );
 
-    const output = runWork("archive-project", "test-proj");
-    assert.ok(output.includes("archived project: test-proj"));
-    assert.ok(!fs.existsSync(path.join(tmpDir, "projects", "test-proj")));
-    assert.ok(
-      fs.existsSync(
-        path.join(tmpDir, "archive", "projects", "test-proj", "project.md"),
-      ),
-    );
+      const output = runWork("archive-project", "test-proj");
+      assert.ok(output.includes("archived project: test-proj"));
+      assert.ok(!fs.existsSync(path.join(tmpDir, "projects", "test-proj")));
+      assert.ok(
+        fs.existsSync(
+          path.join(tmpDir, "archive", "projects", "test-proj", "project.md"),
+        ),
+      );
+    });
+
+    it("errors on nonexistent project", () => {
+      assert.throws(() => runWork("archive-project", "nope"), /not found/);
+    });
   });
 
-  it("errors on nonexistent project", () => {
-    assert.throws(() => runWork("archive-project", "nope"), /not found/);
-  });
-});
+  describe("tick archive queue integration", () => {
+    beforeEach(setup);
+    afterEach(teardown);
 
-describe("tick archive queue integration", () => {
-  it("tick dequeues checked archive items", () => {
-    writeProject(
-      "to-archive",
-      `---
+    it("tick dequeues checked archive items", () => {
+      writeProject(
+        "to-archive",
+        `---
 status: completed
 ---
 
@@ -116,36 +124,36 @@ status: completed
 
 ## Changelog
 - [x] Done ✅ 2026-03-01`,
-    );
+      );
 
-    writeDailyNote(
-      "2026-03-10",
-      [
-        "## Tasks",
-        "",
-        "## Log",
-        "",
-        "## Archive",
-        "- [x] [[projects/to-archive/project|To Archive]] — completed 2026-03-01 <!-- key:projects/to-archive -->",
-      ].join("\n"),
-    );
+      writeDailyNote(
+        "2026-03-10",
+        [
+          "## Tasks",
+          "",
+          "## Log",
+          "",
+          "## Archive",
+          "- [x] [[projects/to-archive/project|To Archive]] — completed 2026-03-01 <!-- key:projects/to-archive -->",
+        ].join("\n"),
+      );
 
-    const output = runWork("tick", "--verbose", "--date=2026-03-10");
-    assert.ok(output.includes("archived project: to-archive"));
-    assert.ok(!fs.existsSync(path.join(tmpDir, "projects", "to-archive")));
-    assert.ok(
-      fs.existsSync(
-        path.join(tmpDir, "archive", "projects", "to-archive", "project.md"),
-      ),
-    );
-    const note = readDailyNote("2026-03-10");
-    assert.ok(!note.includes("key:projects/to-archive"));
-  });
+      const output = runWork("tick", "--verbose", "--date=2026-03-10");
+      assert.ok(output.includes("archived project: to-archive"));
+      assert.ok(!fs.existsSync(path.join(tmpDir, "projects", "to-archive")));
+      assert.ok(
+        fs.existsSync(
+          path.join(tmpDir, "archive", "projects", "to-archive", "project.md"),
+        ),
+      );
+      const note = readDailyNote("2026-03-10");
+      assert.ok(!note.includes("key:projects/to-archive"));
+    });
 
-  it("tick ignores unchecked archive items", () => {
-    writeProject(
-      "keep-me",
-      `---
+    it("tick ignores unchecked archive items", () => {
+      writeProject(
+        "keep-me",
+        `---
 status: completed
 ---
 
@@ -153,38 +161,41 @@ status: completed
 
 ## Changelog
 - [x] Done ✅ 2026-03-01`,
-    );
+      );
 
-    writeDailyNote(
-      "2026-03-10",
-      [
-        "## Tasks",
-        "",
-        "## Log",
-        "",
-        "## Archive",
-        "- [ ] [[projects/keep-me/project|Keep Me]] — completed 2026-03-01 <!-- key:projects/keep-me -->",
-      ].join("\n"),
-    );
+      writeDailyNote(
+        "2026-03-10",
+        [
+          "## Tasks",
+          "",
+          "## Log",
+          "",
+          "## Archive",
+          "- [ ] [[projects/keep-me/project|Keep Me]] — completed 2026-03-01 <!-- key:projects/keep-me -->",
+        ].join("\n"),
+      );
 
-    runWork("tick", "--verbose", "--date=2026-03-10");
-    assert.ok(fs.existsSync(projectPath("keep-me")));
-    const note = readDailyNote("2026-03-10");
-    assert.ok(note.includes("key:projects/keep-me"));
+      runWork("tick", "--verbose", "--date=2026-03-10");
+      assert.ok(fs.existsSync(projectPath("keep-me")));
+      const note = readDailyNote("2026-03-10");
+      assert.ok(note.includes("key:projects/keep-me"));
+    });
+
+    it("tick with no archive section runs clean", () => {
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+      const output = runWork("tick", "--verbose", "--date=2026-03-10");
+      assert.ok(output.includes("nothing to archive"));
+    });
   });
 
-  it("tick with no archive section runs clean", () => {
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
-    const output = runWork("tick", "--verbose", "--date=2026-03-10");
-    assert.ok(output.includes("nothing to archive"));
-  });
-});
+  describe("completeProjects stamps completed_at via CLI", () => {
+    beforeEach(setup);
+    afterEach(teardown);
 
-describe("completeProjects stamps completed_at via CLI", () => {
-  it("wrap stamps completed_at on newly completed projects", () => {
-    writeProject(
-      "completable",
-      `---
+    it("wrap stamps completed_at on newly completed projects", () => {
+      writeProject(
+        "completable",
+        `---
 status: active
 ---
 
@@ -196,26 +207,29 @@ status: active
 - [x] All done ✅ 2026-03-01
 
 ## Notes`,
-    );
+      );
 
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
 
-    const fakeClaude = path.join(tmpDir, "fake-claude.sh");
-    fs.writeFileSync(fakeClaude, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      const fakeClaude = path.join(tmpDir, "fake-claude.sh");
+      fs.writeFileSync(fakeClaude, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
 
-    runWorkEnv({ WORK_CLAUDE_CMD: fakeClaude }, "wrap", "--date=2026-03-10");
+      runWorkEnv({ WORK_CLAUDE_CMD: fakeClaude }, "wrap", "--date=2026-03-10");
 
-    const result = fs.readFileSync(projectPath("completable"), "utf-8");
-    assert.ok(result.includes("status: completed"));
-    assert.match(result, /completed_at: \d{4}-\d{2}-\d{2}/);
+      const result = fs.readFileSync(projectPath("completable"), "utf-8");
+      assert.ok(result.includes("status: completed"));
+      assert.match(result, /completed_at: \d{4}-\d{2}-\d{2}/);
+    });
   });
-});
 
-describe("tick wraps previous unwrapped days", () => {
-  it("wraps previous day note if it lacks summary", () => {
-    writeProject(
-      "wrapable",
-      `---
+  describe("tick wraps previous unwrapped days", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("wraps previous day note if it lacks summary", () => {
+      writeProject(
+        "wrapable",
+        `---
 status: active
 ---
 
@@ -227,118 +241,121 @@ status: active
 - [x] Done ✅ 2026-03-09
 
 ## Notes`,
-    );
+      );
 
-    writeDailyNote("2026-03-09", "## Tasks\n\n## Log\n");
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+      writeDailyNote("2026-03-09", "## Tasks\n\n## Log\n");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
 
-    fs.mkdirSync(path.join(tmpDir, "weekly"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "weekly", "2026-W11.md"), "# done");
+      fs.mkdirSync(path.join(tmpDir, "weekly"), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, "weekly", "2026-W11.md"), "# done");
 
-    const fakeClaude = path.join(tmpDir, "fake-claude.js");
-    const np = path.join(tmpDir, "2026-03-09.md");
-    fs.writeFileSync(
-      fakeClaude,
-      [
-        `#!/usr/bin/env node`,
-        `const fs = require('fs');`,
-        `const np = ${JSON.stringify(np)};`,
-        `let c = fs.readFileSync(np, 'utf-8');`,
-        `c = c.replace('## Log', '## Summary\\nFake summary\\n\\n## Log');`,
-        `fs.writeFileSync(np, c);`,
-      ].join("\n"),
-      { mode: 0o755 },
-    );
+      const fakeClaude = path.join(tmpDir, "fake-claude.js");
+      const np = path.join(tmpDir, "2026-03-09.md");
+      fs.writeFileSync(
+        fakeClaude,
+        [
+          `#!/usr/bin/env node`,
+          `const fs = require('fs');`,
+          `const np = ${JSON.stringify(np)};`,
+          `let c = fs.readFileSync(np, 'utf-8');`,
+          `c = c.replace('## Log', '## Summary\\nFake summary\\n\\n## Log');`,
+          `fs.writeFileSync(np, c);`,
+        ].join("\n"),
+        { mode: 0o755 },
+      );
 
-    const output = runWorkEnv(
-      { WORK_CLAUDE_CMD: fakeClaude },
-      "tick",
-      "--verbose",
-      "--date=2026-03-10",
-    );
-    assert.ok(output.includes("=== wrap 2026-03-09 ==="));
-    const note = readDailyNote("2026-03-09");
-    assert.ok(note.includes("## Summary"));
-    const proj = fs.readFileSync(projectPath("wrapable"), "utf-8");
-    assert.ok(proj.includes("status: completed"));
+      const output = runWorkEnv(
+        { WORK_CLAUDE_CMD: fakeClaude },
+        "tick",
+        "--verbose",
+        "--date=2026-03-10",
+      );
+      assert.ok(output.includes("=== wrap 2026-03-09 ==="));
+      const note = readDailyNote("2026-03-09");
+      assert.ok(note.includes("## Summary"));
+      const proj = fs.readFileSync(projectPath("wrapable"), "utf-8");
+      assert.ok(proj.includes("status: completed"));
+    });
+
+    it("stops backfill at first summarized day", () => {
+      writeDailyNote(
+        "2026-03-08",
+        "## Tasks\n\n## Summary\nAlready done\n\n## Log\n",
+      );
+      writeDailyNote("2026-03-09", "## Tasks\n\n## Log\n");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+
+      const fakeClaude = path.join(tmpDir, "fake-claude.js");
+      const logFile = path.join(tmpDir, "wrap-log.txt");
+      fs.writeFileSync(
+        fakeClaude,
+        [
+          "#!/usr/bin/env node",
+          `const fs = require('fs');`,
+          `const existing = fs.existsSync(${JSON.stringify(logFile)}) ? fs.readFileSync(${JSON.stringify(logFile)}, 'utf-8') : '';`,
+          `fs.writeFileSync(${JSON.stringify(logFile)}, existing + 'wrapped\\n');`,
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+
+      const output = runWorkEnv(
+        { WORK_CLAUDE_CMD: fakeClaude },
+        "tick",
+        "--verbose",
+        "--date=2026-03-10",
+      );
+      assert.ok(output.includes("=== wrap 2026-03-09 ==="));
+      assert.ok(!output.includes("=== wrap 2026-03-08 ==="));
+      const wrapCount = fs
+        .readFileSync(logFile, "utf-8")
+        .split("\n")
+        .filter((l) => l === "wrapped").length;
+      assert.equal(wrapCount, 1);
+    });
+
+    it("does not wrap today", () => {
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+
+      const output = runWork("tick", "--verbose", "--date=2026-03-10");
+      assert.ok(!output.includes("=== wrap"));
+    });
+
+    it("skips days with no daily note", () => {
+      writeDailyNote("2026-03-08", "## Tasks\n\n## Log\n");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+
+      const logFile = path.join(tmpDir, "wrap-log.txt");
+      const fakeClaude = path.join(tmpDir, "fake-claude.js");
+      fs.writeFileSync(
+        fakeClaude,
+        [
+          "#!/usr/bin/env node",
+          `const fs = require('fs');`,
+          `const existing = fs.existsSync(${JSON.stringify(logFile)}) ? fs.readFileSync(${JSON.stringify(logFile)}, 'utf-8') : '';`,
+          `fs.writeFileSync(${JSON.stringify(logFile)}, existing + 'wrapped\\n');`,
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+
+      const output = runWorkEnv(
+        { WORK_CLAUDE_CMD: fakeClaude },
+        "tick",
+        "--verbose",
+        "--date=2026-03-10",
+      );
+      assert.ok(output.includes("=== wrap 2026-03-08 ==="));
+      assert.ok(!output.includes("=== wrap 2026-03-09 ==="));
+    });
   });
 
-  it("stops backfill at first summarized day", () => {
-    writeDailyNote(
-      "2026-03-08",
-      "## Tasks\n\n## Summary\nAlready done\n\n## Log\n",
-    );
-    writeDailyNote("2026-03-09", "## Tasks\n\n## Log\n");
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+  describe("weekly proposals via tick", () => {
+    beforeEach(setup);
+    afterEach(teardown);
 
-    const fakeClaude = path.join(tmpDir, "fake-claude.js");
-    const logFile = path.join(tmpDir, "wrap-log.txt");
-    fs.writeFileSync(
-      fakeClaude,
-      [
-        "#!/usr/bin/env node",
-        `const fs = require('fs');`,
-        `const existing = fs.existsSync(${JSON.stringify(logFile)}) ? fs.readFileSync(${JSON.stringify(logFile)}, 'utf-8') : '';`,
-        `fs.writeFileSync(${JSON.stringify(logFile)}, existing + 'wrapped\\n');`,
-      ].join("\n"),
-      { mode: 0o755 },
-    );
-
-    const output = runWorkEnv(
-      { WORK_CLAUDE_CMD: fakeClaude },
-      "tick",
-      "--verbose",
-      "--date=2026-03-10",
-    );
-    assert.ok(output.includes("=== wrap 2026-03-09 ==="));
-    assert.ok(!output.includes("=== wrap 2026-03-08 ==="));
-    const wrapCount = fs
-      .readFileSync(logFile, "utf-8")
-      .split("\n")
-      .filter((l) => l === "wrapped").length;
-    assert.equal(wrapCount, 1);
-  });
-
-  it("does not wrap today", () => {
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
-
-    const output = runWork("tick", "--verbose", "--date=2026-03-10");
-    assert.ok(!output.includes("=== wrap"));
-  });
-
-  it("skips days with no daily note", () => {
-    writeDailyNote("2026-03-08", "## Tasks\n\n## Log\n");
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
-
-    const logFile = path.join(tmpDir, "wrap-log.txt");
-    const fakeClaude = path.join(tmpDir, "fake-claude.js");
-    fs.writeFileSync(
-      fakeClaude,
-      [
-        "#!/usr/bin/env node",
-        `const fs = require('fs');`,
-        `const existing = fs.existsSync(${JSON.stringify(logFile)}) ? fs.readFileSync(${JSON.stringify(logFile)}, 'utf-8') : '';`,
-        `fs.writeFileSync(${JSON.stringify(logFile)}, existing + 'wrapped\\n');`,
-      ].join("\n"),
-      { mode: 0o755 },
-    );
-
-    const output = runWorkEnv(
-      { WORK_CLAUDE_CMD: fakeClaude },
-      "tick",
-      "--verbose",
-      "--date=2026-03-10",
-    );
-    assert.ok(output.includes("=== wrap 2026-03-08 ==="));
-    assert.ok(!output.includes("=== wrap 2026-03-09 ==="));
-  });
-});
-
-describe("weekly proposals via tick", () => {
-  it("proposes completed projects when weekly file missing", () => {
-    writeProject(
-      "done-proj",
-      `---
+    it("proposes completed projects when weekly file missing", () => {
+      writeProject(
+        "done-proj",
+        `---
 status: completed
 completed_at: 2026-03-08
 ---
@@ -349,11 +366,11 @@ completed_at: 2026-03-08
 - [x] Item ✅ 2026-03-08
 
 ## Notes`,
-    );
+      );
 
-    writeProject(
-      "active-proj",
-      `---
+      writeProject(
+        "active-proj",
+        `---
 status: active
 ---
 
@@ -365,21 +382,21 @@ status: active
 ## Changelog
 
 ## Notes`,
-    );
+      );
 
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
 
-    const output = runWork("tick", "--verbose", "--date=2026-03-10");
-    assert.ok(output.includes("propose"));
-    const note = readDailyNote("2026-03-10");
-    assert.ok(note.includes("key:projects/done-proj"));
-    assert.ok(!note.includes("key:projects/active-proj"));
-  });
+      const output = runWork("tick", "--verbose", "--date=2026-03-10");
+      assert.ok(output.includes("propose"));
+      const note = readDailyNote("2026-03-10");
+      assert.ok(note.includes("key:projects/done-proj"));
+      assert.ok(!note.includes("key:projects/active-proj"));
+    });
 
-  it("skips evergreen projects when proposing", () => {
-    writeProject(
-      "evergreen",
-      `---
+    it("skips evergreen projects when proposing", () => {
+      writeProject(
+        "evergreen",
+        `---
 status: evergreen
 ---
 
@@ -389,19 +406,19 @@ status: evergreen
 - [x] Item ✅ 2026-03-01
 
 ## Notes`,
-    );
+      );
 
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
 
-    runWork("tick", "--verbose", "--date=2026-03-10");
-    const note = readDailyNote("2026-03-10");
-    assert.ok(!note.includes("key:projects/evergreen"));
-  });
+      runWork("tick", "--verbose", "--date=2026-03-10");
+      const note = readDailyNote("2026-03-10");
+      assert.ok(!note.includes("key:projects/evergreen"));
+    });
 
-  it("skips proposals when weekly file already exists", () => {
-    writeProject(
-      "done-proj",
-      `---
+    it("skips proposals when weekly file already exists", () => {
+      writeProject(
+        "done-proj",
+        `---
 status: completed
 completed_at: 2026-03-08
 ---
@@ -412,156 +429,171 @@ completed_at: 2026-03-08
 - [x] Item ✅ 2026-03-08
 
 ## Notes`,
-    );
-
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
-
-    fs.mkdirSync(path.join(tmpDir, "weekly"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, "weekly", "2026-W11.md"),
-      "# Already done",
-    );
-
-    const output = runWork("tick", "--verbose", "--date=2026-03-10");
-    assert.ok(!output.includes("propose"));
-    const note = readDailyNote("2026-03-10");
-    assert.ok(!note.includes("key:projects/done-proj"));
-  });
-});
-
-describe("tick error debug", () => {
-  function makeFakeClaude() {
-    const argsFile = path.join(tmpDir, "claude-args.txt");
-    const stdinFile = path.join(tmpDir, "claude-stdin.txt");
-    const fakeClaude = path.join(tmpDir, "fake-claude.js");
-    fs.writeFileSync(
-      fakeClaude,
-      [
-        "#!/usr/bin/env node",
-        `const fs = require('fs');`,
-        `fs.writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));`,
-        `let stdin = '';`,
-        `process.stdin.setEncoding('utf-8');`,
-        `process.stdin.on('data', d => stdin += d);`,
-        `process.stdin.on('end', () => {`,
-        `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
-        `});`,
-      ].join("\n"),
-      { mode: 0o755 },
-    );
-    return { fakeClaude, argsFile, stdinFile };
-  }
-
-  it("spawns Claude on error with correct args and prompt", () => {
-    const { fakeClaude, argsFile, stdinFile } = makeFakeClaude();
-    fs.rmSync(path.join(tmpDir, "projects"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "projects"), "not a directory");
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
-
-    let output;
-    try {
-      output = runWorkEnv(
-        { WORK_CLAUDE_CMD: fakeClaude },
-        "tick",
-        "--verbose",
-        "--date=2026-03-10",
       );
-    } catch (e) {
-      output = e.stdout || "";
+
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+
+      fs.mkdirSync(path.join(tmpDir, "weekly"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "weekly", "2026-W11.md"),
+        "# Already done",
+      );
+
+      const output = runWork("tick", "--verbose", "--date=2026-03-10");
+      assert.ok(!output.includes("propose"));
+      const note = readDailyNote("2026-03-10");
+      assert.ok(!note.includes("key:projects/done-proj"));
+    });
+  });
+
+  describe("tick error debug", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    function makeFakeClaude() {
+      const argsFile = path.join(tmpDir, "claude-args.txt");
+      const stdinFile = path.join(tmpDir, "claude-stdin.txt");
+      const fakeClaude = path.join(tmpDir, "fake-claude.js");
+      fs.writeFileSync(
+        fakeClaude,
+        [
+          "#!/usr/bin/env node",
+          `const fs = require('fs');`,
+          `fs.writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));`,
+          `let stdin = '';`,
+          `process.stdin.setEncoding('utf-8');`,
+          `process.stdin.on('data', d => stdin += d);`,
+          `process.stdin.on('end', () => {`,
+          `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
+          `});`,
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+      return { fakeClaude, argsFile, stdinFile };
     }
 
-    assert.ok(output.includes("ERROR"));
-    assert.ok(fs.existsSync(argsFile), "claude should have been invoked");
-    const args = JSON.parse(fs.readFileSync(argsFile, "utf-8"));
-    assert.ok(args.includes("-p"));
-    assert.ok(args.includes("--allowedTools"));
-    assert.ok(args.includes("Read"));
-    assert.ok(args.includes("Glob"));
-    assert.ok(args.includes("Grep"));
-    assert.ok(args.includes("Write"));
-    assert.ok(args.includes("Edit"));
-    const stdin = fs.readFileSync(stdinFile, "utf-8");
-    assert.ok(stdin.includes("tick command encountered errors"));
-    assert.ok(stdin.includes("Fix tick error:"));
-  });
+    it("spawns Claude on error with correct args and prompt", () => {
+      const { fakeClaude, argsFile, stdinFile } = makeFakeClaude();
+      fs.rmSync(path.join(tmpDir, "projects"), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, "projects"), "not a directory");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
 
-  it("skips Claude if tick-error task already exists", () => {
-    const { fakeClaude, argsFile } = makeFakeClaude();
-    writeProject(
-      "work",
-      "---\nstatus: evergreen\n---\n\n# work\n\n## Tasks\n\n- [ ] Fix tick error: previous error\n\n## Changelog\n",
-    );
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+      let output;
+      try {
+        output = runWorkEnv(
+          { WORK_CLAUDE_CMD: fakeClaude },
+          "tick",
+          "--verbose",
+          "--date=2026-03-10",
+        );
+      } catch (e) {
+        output = e.stdout || "";
+      }
 
-    try {
-      runWorkEnv(
+      assert.ok(output.includes("ERROR"));
+      assert.ok(fs.existsSync(argsFile), "claude should have been invoked");
+      const args = JSON.parse(fs.readFileSync(argsFile, "utf-8"));
+      assert.ok(args.includes("-p"));
+      assert.ok(args.includes("--allowedTools"));
+      assert.ok(args.includes("Read"));
+      assert.ok(args.includes("Glob"));
+      assert.ok(args.includes("Grep"));
+      assert.ok(args.includes("Write"));
+      assert.ok(args.includes("Edit"));
+      const stdin = fs.readFileSync(stdinFile, "utf-8");
+      assert.ok(stdin.includes("tick command encountered errors"));
+      assert.ok(stdin.includes("Fix tick error:"));
+    });
+
+    it("skips Claude if tick-error task already exists", () => {
+      const { fakeClaude, argsFile } = makeFakeClaude();
+      writeProject(
+        "work",
+        "---\nstatus: evergreen\n---\n\n# work\n\n## Tasks\n\n- [ ] Fix tick error: previous error\n\n## Changelog\n",
+      );
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+
+      try {
+        runWorkEnv(
+          { WORK_CLAUDE_CMD: fakeClaude },
+          "tick",
+          "--verbose",
+          "--date=2026-03-10",
+          "--simulate-error",
+        );
+      } catch {}
+
+      assert.ok(
+        !fs.existsSync(argsFile),
+        "claude should NOT have been invoked",
+      );
+    });
+
+    it("logs syslog INFO on success", () => {
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+      const { fakeClaude, argsFile } = makeFakeClaude();
+
+      const output = runWorkEnv(
         { WORK_CLAUDE_CMD: fakeClaude },
         "tick",
-        "--verbose",
         "--date=2026-03-10",
-        "--simulate-error",
       );
-    } catch {}
 
-    assert.ok(!fs.existsSync(argsFile), "claude should NOT have been invoked");
+      assert.ok(output.includes("INFO"));
+      assert.ok(output.includes("tick ok"));
+      assert.ok(
+        !fs.existsSync(argsFile),
+        "claude should NOT have been invoked",
+      );
+    });
   });
 
-  it("logs syslog INFO on success", () => {
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
-    const { fakeClaude, argsFile } = makeFakeClaude();
+  describe("wrap passes --allowedTools", () => {
+    beforeEach(setup);
+    afterEach(teardown);
 
-    const output = runWorkEnv(
-      { WORK_CLAUDE_CMD: fakeClaude },
-      "tick",
-      "--date=2026-03-10",
-    );
+    it("passes --allowedTools and prompt via stdin to claude", () => {
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
 
-    assert.ok(output.includes("INFO"));
-    assert.ok(output.includes("tick ok"));
-    assert.ok(!fs.existsSync(argsFile), "claude should NOT have been invoked");
+      const argsFile = path.join(tmpDir, "claude-args.txt");
+      const stdinFile = path.join(tmpDir, "claude-stdin.txt");
+      const fakeClaude = path.join(tmpDir, "fake-claude.js");
+      fs.writeFileSync(
+        fakeClaude,
+        [
+          "#!/usr/bin/env node",
+          `const fs = require('fs');`,
+          `fs.writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));`,
+          `let stdin = '';`,
+          `process.stdin.setEncoding('utf-8');`,
+          `process.stdin.on('data', d => stdin += d);`,
+          `process.stdin.on('end', () => {`,
+          `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
+          `});`,
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+
+      runWorkEnv({ WORK_CLAUDE_CMD: fakeClaude }, "wrap", "--date=2026-03-10");
+
+      const args = JSON.parse(fs.readFileSync(argsFile, "utf-8"));
+      assert.ok(args.includes("--allowedTools"));
+      assert.ok(args.includes("Read"));
+      assert.ok(args.includes("Edit"));
+      assert.ok(args.includes("-p"));
+      const stdin = fs.readFileSync(stdinFile, "utf-8");
+      assert.ok(stdin.includes("Read the daily note"));
+    });
   });
-});
 
-describe("wrap passes --allowedTools", () => {
-  it("passes --allowedTools and prompt via stdin to claude", () => {
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+  describe("tick writes weekly summary", () => {
+    beforeEach(setup);
+    afterEach(teardown);
 
-    const argsFile = path.join(tmpDir, "claude-args.txt");
-    const stdinFile = path.join(tmpDir, "claude-stdin.txt");
-    const fakeClaude = path.join(tmpDir, "fake-claude.js");
-    fs.writeFileSync(
-      fakeClaude,
-      [
-        "#!/usr/bin/env node",
-        `const fs = require('fs');`,
-        `fs.writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));`,
-        `let stdin = '';`,
-        `process.stdin.setEncoding('utf-8');`,
-        `process.stdin.on('data', d => stdin += d);`,
-        `process.stdin.on('end', () => {`,
-        `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
-        `});`,
-      ].join("\n"),
-      { mode: 0o755 },
-    );
-
-    runWorkEnv({ WORK_CLAUDE_CMD: fakeClaude }, "wrap", "--date=2026-03-10");
-
-    const args = JSON.parse(fs.readFileSync(argsFile, "utf-8"));
-    assert.ok(args.includes("--allowedTools"));
-    assert.ok(args.includes("Read"));
-    assert.ok(args.includes("Edit"));
-    assert.ok(args.includes("-p"));
-    const stdin = fs.readFileSync(stdinFile, "utf-8");
-    assert.ok(stdin.includes("Read the daily note"));
-  });
-});
-
-describe("tick writes weekly summary", () => {
-  it("spawns claude for weekly summary when weekly file missing", () => {
-    writeProject(
-      "proj",
-      `---
+    it("spawns claude for weekly summary when weekly file missing", () => {
+      writeProject(
+        "proj",
+        `---
 status: active
 ---
 
@@ -573,48 +605,48 @@ status: active
 - [x] Weekly work ✅ 2026-03-10
 
 ## Notes`,
-    );
+      );
 
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
 
-    const weeklyDir = path.join(tmpDir, "weekly");
-    const outputPath = path.join(weeklyDir, "2026-W11.md");
-    const stdinFile = path.join(tmpDir, "claude-stdin.txt");
-    const fakeClaude = path.join(tmpDir, "fake-claude.js");
-    fs.writeFileSync(
-      fakeClaude,
-      [
-        "#!/usr/bin/env node",
-        `const fs = require('fs');`,
-        `let stdin = '';`,
-        `process.stdin.setEncoding('utf-8');`,
-        `process.stdin.on('data', d => stdin += d);`,
-        `process.stdin.on('end', () => {`,
-        `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
-        `  fs.mkdirSync(${JSON.stringify(weeklyDir)}, { recursive: true });`,
-        `  fs.writeFileSync(${JSON.stringify(outputPath)}, '# 2026-W11 Work Summary\\n\\nNarrative.');`,
-        `});`,
-      ].join("\n"),
-      { mode: 0o755 },
-    );
+      const weeklyDir = path.join(tmpDir, "weekly");
+      const outputPath = path.join(weeklyDir, "2026-W11.md");
+      const stdinFile = path.join(tmpDir, "claude-stdin.txt");
+      const fakeClaude = path.join(tmpDir, "fake-claude.js");
+      fs.writeFileSync(
+        fakeClaude,
+        [
+          "#!/usr/bin/env node",
+          `const fs = require('fs');`,
+          `let stdin = '';`,
+          `process.stdin.setEncoding('utf-8');`,
+          `process.stdin.on('data', d => stdin += d);`,
+          `process.stdin.on('end', () => {`,
+          `  fs.writeFileSync(${JSON.stringify(stdinFile)}, stdin);`,
+          `  fs.mkdirSync(${JSON.stringify(weeklyDir)}, { recursive: true });`,
+          `  fs.writeFileSync(${JSON.stringify(outputPath)}, '# 2026-W11 Work Summary\\n\\nNarrative.');`,
+          `});`,
+        ].join("\n"),
+        { mode: 0o755 },
+      );
 
-    const output = runWorkEnv(
-      { WORK_CLAUDE_CMD: fakeClaude },
-      "tick",
-      "--verbose",
-      "--date=2026-03-10",
-    );
-    assert.ok(output.includes("weekly summary"));
-    assert.ok(fs.existsSync(outputPath));
-    const stdin = fs.readFileSync(stdinFile, "utf-8");
-    assert.ok(stdin.includes("Weekly Project"));
-    assert.ok(stdin.includes("Weekly work"));
-  });
+      const output = runWorkEnv(
+        { WORK_CLAUDE_CMD: fakeClaude },
+        "tick",
+        "--verbose",
+        "--date=2026-03-10",
+      );
+      assert.ok(output.includes("weekly summary"));
+      assert.ok(fs.existsSync(outputPath));
+      const stdin = fs.readFileSync(stdinFile, "utf-8");
+      assert.ok(stdin.includes("Weekly Project"));
+      assert.ok(stdin.includes("Weekly work"));
+    });
 
-  it("skips weekly summary when weekly file already exists", () => {
-    writeProject(
-      "proj",
-      `---
+    it("skips weekly summary when weekly file already exists", () => {
+      writeProject(
+        "proj",
+        `---
 status: active
 ---
 
@@ -626,17 +658,18 @@ status: active
 - [x] Work ✅ 2026-03-10
 
 ## Notes`,
-    );
+      );
 
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
 
-    fs.mkdirSync(path.join(tmpDir, "weekly"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, "weekly", "2026-W11.md"),
-      "# Already done",
-    );
+      fs.mkdirSync(path.join(tmpDir, "weekly"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "weekly", "2026-W11.md"),
+        "# Already done",
+      );
 
-    const output = runWork("tick", "--verbose", "--date=2026-03-10");
-    assert.ok(!output.includes("weekly summary"));
+      const output = runWork("tick", "--verbose", "--date=2026-03-10");
+      assert.ok(!output.includes("weekly summary"));
+    });
   });
 });

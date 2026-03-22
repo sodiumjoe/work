@@ -66,7 +66,7 @@ function logSyncEntries(dateStr, entries, dryRun, { quiet } = {}) {
     return `- [x] ${e.itemText} — [[${wikiPath}|${e.title}]]`;
   });
   if (dryRun) {
-    for (const line of formatted) console.log(line);
+    for (const line of formatted) log(line);
     return;
   }
   const dailyNote = notePath(dateStr);

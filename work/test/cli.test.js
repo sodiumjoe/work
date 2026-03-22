@@ -5,90 +5,101 @@ const path = require("node:path");
 const os = require("node:os");
 const { execFileSync } = require("node:child_process");
 
-let tmpDir;
-let origVault;
-let origXdg;
-const workBin = path.join(__dirname, "..", "bin", "work");
+describe("cli", { concurrency: 1 }, () => {
+  let tmpDir;
+  let origVault;
+  let origXdg;
+  const workBin = path.join(__dirname, "..", "bin", "work");
 
-beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cli-test-"));
-  fs.mkdirSync(path.join(tmpDir, "projects"));
-  fs.mkdirSync(path.join(tmpDir, "config", "work"), { recursive: true });
-  fs.writeFileSync(
-    path.join(tmpDir, "config", "work", "config.json"),
-    JSON.stringify({}),
-  );
-  origVault = process.env.WORK_VAULT;
-  origXdg = process.env.XDG_CONFIG_HOME;
-  process.env.WORK_VAULT = tmpDir;
-  process.env.XDG_CONFIG_HOME = path.join(tmpDir, "config");
-});
-
-afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-  if (origVault === undefined) {
-    delete process.env.WORK_VAULT;
-  } else {
-    process.env.WORK_VAULT = origVault;
+  function setup() {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cli-test-"));
+    fs.mkdirSync(path.join(tmpDir, "projects"));
+    fs.mkdirSync(path.join(tmpDir, "config", "work"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "config", "work", "config.json"),
+      JSON.stringify({}),
+    );
+    origVault = process.env.WORK_VAULT;
+    origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.WORK_VAULT = tmpDir;
+    process.env.XDG_CONFIG_HOME = path.join(tmpDir, "config");
   }
-  if (origXdg === undefined) {
-    delete process.env.XDG_CONFIG_HOME;
-  } else {
-    process.env.XDG_CONFIG_HOME = origXdg;
+
+  function teardown() {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (origVault === undefined) {
+      delete process.env.WORK_VAULT;
+    } else {
+      process.env.WORK_VAULT = origVault;
+    }
+    if (origXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = origXdg;
+    }
   }
-});
 
-function runWork(...args) {
-  return execFileSync("node", [workBin, ...args], {
-    env: {
-      ...process.env,
-      WORK_VAULT: tmpDir,
-      XDG_CONFIG_HOME: path.join(tmpDir, "config"),
-      WORK_TEST_HOUR: "10",
-      WORK_SKIP_REVIEWS: "1",
-    },
-    encoding: "utf-8",
-    timeout: 10000,
+  beforeEach(setup);
+  afterEach(teardown);
+
+  function runWork(...args) {
+    return execFileSync("node", [workBin, ...args], {
+      env: {
+        ...process.env,
+        WORK_VAULT: tmpDir,
+        XDG_CONFIG_HOME: path.join(tmpDir, "config"),
+        WORK_TEST_HOUR: "10",
+        WORK_SKIP_REVIEWS: "1",
+        CLAUDECODE: "",
+      },
+      encoding: "utf-8",
+      timeout: 10000,
+    });
+  }
+
+  function writeProject(slug, content) {
+    const dir = path.join(tmpDir, "projects", slug);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "project.md"), content);
+  }
+
+  function projectPath(slug) {
+    return path.join(tmpDir, "projects", slug, "project.md");
+  }
+
+  function writeDailyNote(dateStr, content) {
+    fs.writeFileSync(path.join(tmpDir, `${dateStr}.md`), content);
+  }
+
+  function readDailyNote(dateStr) {
+    return fs.readFileSync(path.join(tmpDir, `${dateStr}.md`), "utf-8");
+  }
+
+  describe("work create-project", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("creates project file", () => {
+      const output = runWork("create-project", "test-proj", "Test Project");
+      assert.ok(output.includes("project.md"));
+      const result = fs.readFileSync(projectPath("test-proj"), "utf-8");
+      assert.ok(result.includes("# Test Project"));
+      assert.ok(result.includes("status: active"));
+    });
+
+    it("rejects missing arguments", () => {
+      assert.throws(() => runWork("create-project", "only-slug"), /usage/);
+    });
   });
-}
 
-function writeProject(slug, content) {
-  const dir = path.join(tmpDir, "projects", slug);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "project.md"), content);
-}
+  describe("work complete", () => {
+    beforeEach(setup);
+    afterEach(teardown);
 
-function projectPath(slug) {
-  return path.join(tmpDir, "projects", slug, "project.md");
-}
-
-function writeDailyNote(dateStr, content) {
-  fs.writeFileSync(path.join(tmpDir, `${dateStr}.md`), content);
-}
-
-function readDailyNote(dateStr) {
-  return fs.readFileSync(path.join(tmpDir, `${dateStr}.md`), "utf-8");
-}
-
-describe("work create-project", () => {
-  it("creates project file", () => {
-    const output = runWork("create-project", "test-proj", "Test Project");
-    assert.ok(output.includes("project.md"));
-    const result = fs.readFileSync(projectPath("test-proj"), "utf-8");
-    assert.ok(result.includes("# Test Project"));
-    assert.ok(result.includes("status: active"));
-  });
-
-  it("rejects missing arguments", () => {
-    assert.throws(() => runWork("create-project", "only-slug"), /usage/);
-  });
-});
-
-describe("work complete", () => {
-  it("checks off task and logs to daily note", () => {
-    writeProject(
-      "proj",
-      `---
+    it("checks off task and logs to daily note", () => {
+      writeProject(
+        "proj",
+        `---
 status: active
 ---
 
@@ -100,31 +111,34 @@ status: active
 ## Changelog
 
 ## Notes`,
-    );
+      );
 
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
 
-    runWork(
-      "complete",
-      projectPath("proj"),
-      "Build feature",
-      "--date=2026-03-10",
-    );
+      runWork(
+        "complete",
+        projectPath("proj"),
+        "Build feature",
+        "--date=2026-03-10",
+      );
 
-    const proj = fs.readFileSync(projectPath("proj"), "utf-8");
-    assert.ok(proj.includes("- [x] Build feature"));
+      const proj = fs.readFileSync(projectPath("proj"), "utf-8");
+      assert.ok(proj.includes("- [x] Build feature"));
 
-    const note = readDailyNote("2026-03-10");
-    assert.ok(note.includes("Build feature"));
-    assert.ok(note.includes("[[projects/proj/project|Proj]]"));
+      const note = readDailyNote("2026-03-10");
+      assert.ok(note.includes("Build feature"));
+      assert.ok(note.includes("[[projects/proj/project|Proj]]"));
+    });
   });
-});
 
-describe("work append-task", () => {
-  it("adds task to Tasks section", () => {
-    writeProject(
-      "proj",
-      `---
+  describe("work append-task", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("adds task to Tasks section", () => {
+      writeProject(
+        "proj",
+        `---
 status: active
 ---
 
@@ -135,33 +149,39 @@ status: active
 ## Changelog
 
 ## Notes`,
-    );
+      );
 
-    runWork("append-task", projectPath("proj"), "New task");
+      runWork("append-task", projectPath("proj"), "New task");
 
-    const result = fs.readFileSync(projectPath("proj"), "utf-8");
-    assert.ok(result.includes("- [ ] New task"));
-  });
-});
-
-describe("work paths", () => {
-  it("prints configured paths", () => {
-    const output = runWork("paths");
-    assert.ok(output.includes("vault"));
-    assert.ok(output.includes("projects"));
+      const result = fs.readFileSync(projectPath("proj"), "utf-8");
+      assert.ok(result.includes("- [ ] New task"));
+    });
   });
 
-  it("prints specific path by key", () => {
-    const output = runWork("paths", "vault");
-    assert.equal(output, tmpDir);
-  });
-});
+  describe("work paths", () => {
+    beforeEach(setup);
+    afterEach(teardown);
 
-describe("work summary", () => {
-  it("outputs completed and open items", () => {
-    writeProject(
-      "proj",
-      `---
+    it("prints configured paths", () => {
+      const output = runWork("paths");
+      assert.ok(output.includes("vault"));
+      assert.ok(output.includes("projects"));
+    });
+
+    it("prints specific path by key", () => {
+      const output = runWork("paths", "vault");
+      assert.equal(output, tmpDir);
+    });
+  });
+
+  describe("work summary", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("outputs completed and open items", () => {
+      writeProject(
+        "proj",
+        `---
 status: active
 ---
 
@@ -173,45 +193,48 @@ status: active
 ## Changelog
 
 ## Notes`,
-    );
+      );
 
-    writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n- [x] Done thing\n");
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n- [x] Done thing\n");
 
-    const output = runWork("summary", "--date=2026-03-10");
-    assert.ok(output.includes("### Completed"));
-    assert.ok(output.includes("### Open"));
-    assert.ok(output.includes("Done thing"));
-    assert.ok(output.includes("Open task"));
+      const output = runWork("summary", "--date=2026-03-10");
+      assert.ok(output.includes("### Completed"));
+      assert.ok(output.includes("### Open"));
+      assert.ok(output.includes("Done thing"));
+      assert.ok(output.includes("Open task"));
+    });
   });
-});
 
-describe("work list-projects", () => {
-  it("lists active and evergreen projects as TSV", () => {
-    writeProject(
-      "alpha",
-      `---
+  describe("work list-projects", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("lists active and evergreen projects as TSV", () => {
+      writeProject(
+        "alpha",
+        `---
 status: active
 ---
 
 # Alpha
 
 ## Tasks`,
-    );
+      );
 
-    writeProject(
-      "beta",
-      `---
+      writeProject(
+        "beta",
+        `---
 status: evergreen
 ---
 
 # Beta
 
 ## Tasks`,
-    );
+      );
 
-    writeProject(
-      "done",
-      `---
+      writeProject(
+        "done",
+        `---
 status: completed
 ---
 
@@ -219,25 +242,28 @@ status: completed
 
 ## Changelog
 - [x] Item ✅ 2026-03-01`,
-    );
+      );
 
-    const output = runWork("list-projects");
-    assert.ok(output.includes("alpha\tAlpha\tactive"));
-    assert.ok(output.includes("beta\tBeta\tevergreen"));
-    assert.ok(!output.includes("done"));
+      const output = runWork("list-projects");
+      assert.ok(output.includes("alpha\tAlpha\tactive"));
+      assert.ok(output.includes("beta\tBeta\tevergreen"));
+      assert.ok(!output.includes("done"));
+    });
+
+    it("outputs nothing for empty projects dir", () => {
+      const output = runWork("list-projects");
+      assert.equal(output.trim(), "");
+    });
   });
 
-  it("outputs nothing for empty projects dir", () => {
-    const output = runWork("list-projects");
-    assert.equal(output.trim(), "");
-  });
-});
+  describe("work list-tasks", () => {
+    beforeEach(setup);
+    afterEach(teardown);
 
-describe("work list-tasks", () => {
-  it("lists open tasks with line numbers", () => {
-    writeProject(
-      "proj",
-      `---
+    it("lists open tasks with line numbers", () => {
+      writeProject(
+        "proj",
+        `---
 status: active
 ---
 
@@ -249,19 +275,19 @@ status: active
 - [x] Done task
 
 ## Changelog`,
-    );
+      );
 
-    const output = runWork("list-tasks");
-    const lines = output.trim().split("\n");
-    assert.equal(lines.length, 2);
-    assert.ok(lines[0].includes("\t8\t \tProj\tFirst task"));
-    assert.ok(lines[1].includes("\t9\t/\tProj\tSecond task"));
-  });
+      const output = runWork("list-tasks");
+      const lines = output.trim().split("\n");
+      assert.equal(lines.length, 2);
+      assert.ok(lines[0].includes("\t8\t \tProj\tFirst task"));
+      assert.ok(lines[1].includes("\t9\t/\tProj\tSecond task"));
+    });
 
-  it("lists tasks from specific file", () => {
-    writeProject(
-      "proj",
-      `---
+    it("lists tasks from specific file", () => {
+      writeProject(
+        "proj",
+        `---
 status: completed
 ---
 
@@ -271,23 +297,26 @@ status: completed
 - [ ] Leftover
 
 ## Changelog`,
-    );
+      );
 
-    const output = runWork("list-tasks", projectPath("proj"));
-    assert.ok(output.includes("Leftover"));
+      const output = runWork("list-tasks", projectPath("proj"));
+      assert.ok(output.includes("Leftover"));
+    });
+
+    it("outputs nothing for no tasks", () => {
+      const output = runWork("list-tasks");
+      assert.equal(output.trim(), "");
+    });
   });
 
-  it("outputs nothing for no tasks", () => {
-    const output = runWork("list-tasks");
-    assert.equal(output.trim(), "");
-  });
-});
+  describe("work set-task-state", () => {
+    beforeEach(setup);
+    afterEach(teardown);
 
-describe("work set-task-state", () => {
-  it("sets task to in-progress", () => {
-    writeProject(
-      "proj",
-      `---
+    it("sets task to in-progress", () => {
+      writeProject(
+        "proj",
+        `---
 status: active
 ---
 
@@ -297,19 +326,19 @@ status: active
 - [ ] My task
 
 ## Changelog`,
-    );
+      );
 
-    const filePath = projectPath("proj");
-    runWork("set-task-state", filePath, "8", "in-progress");
+      const filePath = projectPath("proj");
+      runWork("set-task-state", filePath, "8", "in-progress");
 
-    const result = fs.readFileSync(filePath, "utf-8");
-    assert.ok(result.includes("- [/] My task"));
-  });
+      const result = fs.readFileSync(filePath, "utf-8");
+      assert.ok(result.includes("- [/] My task"));
+    });
 
-  it("sets task to done with date", () => {
-    writeProject(
-      "proj",
-      `---
+    it("sets task to done with date", () => {
+      writeProject(
+        "proj",
+        `---
 status: active
 ---
 
@@ -319,24 +348,28 @@ status: active
 - [/] My task
 
 ## Changelog`,
-    );
+      );
 
-    const filePath = projectPath("proj");
-    runWork("set-task-state", filePath, "8", "done", "--date=2026-03-10");
+      const filePath = projectPath("proj");
+      runWork("set-task-state", filePath, "8", "done", "--date=2026-03-10");
 
-    const result = fs.readFileSync(filePath, "utf-8");
-    assert.ok(result.includes("- [x] My task ✅ 2026-03-10"));
+      const result = fs.readFileSync(filePath, "utf-8");
+      assert.ok(result.includes("- [x] My task ✅ 2026-03-10"));
+    });
+
+    it("rejects missing arguments", () => {
+      assert.throws(() => runWork("set-task-state", "file", "1"), /usage/);
+    });
   });
 
-  it("rejects missing arguments", () => {
-    assert.throws(() => runWork("set-task-state", "file", "1"), /usage/);
-  });
-});
+  describe("work help", () => {
+    beforeEach(setup);
+    afterEach(teardown);
 
-describe("work help", () => {
-  it("prints help text", () => {
-    const output = runWork("help");
-    assert.ok(output.includes("Usage:"));
-    assert.ok(output.includes("Commands:"));
+    it("prints help text", () => {
+      const output = runWork("help");
+      assert.ok(output.includes("Usage:"));
+      assert.ok(output.includes("Commands:"));
+    });
   });
 });

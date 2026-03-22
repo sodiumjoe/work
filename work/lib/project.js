@@ -62,7 +62,7 @@ function resolveProject(planFile) {
   }
 }
 
-function parseChangelog(filePath, pattern) {
+function parseChangelog(filePath, pattern, { quiet } = {}) {
   if (!fs.existsSync(filePath)) return;
   const content = fs.readFileSync(filePath, "utf-8");
   const title = getTitle(content);
@@ -76,12 +76,12 @@ function parseChangelog(filePath, pattern) {
   }
   for (const line of changelog) {
     if (re.test(line)) {
-      console.log(`${base}\t${title}\t${line}`);
+      if (!quiet) console.log(`${base}\t${title}\t${line}`);
     }
   }
 }
 
-function completeProjects() {
+function completeProjects({ quiet } = {}) {
   if (!fs.existsSync(PROJECT_DIR)) return [];
   const entries = fs.readdirSync(PROJECT_DIR, { withFileTypes: true });
   const completed = [];
@@ -116,12 +116,12 @@ function completeProjects() {
     });
     const title = getTitle(content) || slug;
     completed.push({ file: `${slug}/project.md`, title });
-    console.log(`completed: ${title} (${slug})`);
+    if (!quiet) console.log(`completed: ${title} (${slug})`);
   }
   return completed;
 }
 
-function archiveProject(slug) {
+function archiveProject(slug, { quiet } = {}) {
   const srcDir = projectDir(slug);
   const srcFile = projectFile(slug);
   if (!fs.existsSync(srcFile)) throw new Error(`not found: ${srcFile}`);
@@ -129,7 +129,7 @@ function archiveProject(slug) {
   fs.mkdirSync(archiveProjectDir, { recursive: true });
   const destDir = path.join(archiveProjectDir, slug);
   fs.renameSync(srcDir, destDir);
-  console.log(`archived project: ${slug}`);
+  if (!quiet) console.log(`archived project: ${slug}`);
 }
 
 function listProjects() {
