@@ -1,11 +1,6 @@
 ---
 name: write-plan
 description: Use when you have a spec or requirements for a multi-step task, before touching code
-forked_from:
-  plugin: superpowers@stripe-internal-marketplace
-  version: 1.0.1
-  skill: writing-plans
-  content_hash: 8a9198d4d9efbcad6e019b17c422c182113062c864b6154ec2a3ba2ed0b6b9d0
 ---
 
 # Writing Plans

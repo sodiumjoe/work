@@ -1,0 +1,22 @@
+{
+  "upstream": {
+    "plugin": "superpowers@stripe-internal-marketplace",
+    "version": "1.0.1",
+    "skill": "brainstorming",
+    "content_hash": "7a238df1ebf0656c1da199aafafcc78c42f47bf4e56dd4e007a67afbb10af455"
+  },
+  "substitutions": [
+    ["superpowers:writing-plans", "work:write-plan"],
+    ["superpowers:brainstorming", "work:create-project"]
+  ],
+  "section_map": {
+    "Overview": "Overview",
+    "Anti-Pattern: \"This Is Too Simple To Need A Design\"": "Anti-Pattern: \"This Is Too Simple To Need A Design\"",
+    "Checklist": "Checklist",
+    "The Process": "The Process",
+    "After the Design": "Creating the Project",
+    "Key Principles": "Key Principles"
+  },
+  "added_sections": ["Assess Scope"],
+  "removed_sections": ["Process Flow"]
+}

@@ -1,11 +1,6 @@
 ---
 name: create-project
 description: Use when starting new work that needs a project — brainstorms scope, creates project, optionally hands off to write-plan
-forked_from:
-  plugin: superpowers@stripe-internal-marketplace
-  version: 1.0.1
-  skill: brainstorming
-  content_hash: 7a238df1ebf0656c1da199aafafcc78c42f47bf4e56dd4e007a67afbb10af455
 ---
 
 # Create Project

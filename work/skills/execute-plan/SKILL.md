@@ -1,11 +1,6 @@
 ---
 name: execute-plan
 description: Use when you have a written implementation plan to execute with review checkpoints
-forked_from:
-  plugin: superpowers@stripe-internal-marketplace
-  version: 1.0.1
-  skill: executing-plans
-  content_hash: d099fa42fd7518f4dafa9f2d51c1c08fce970490d57682b6acd3e7a57bb55b52
 ---
 
 # Executing Plans
@@ -72,3 +67,4 @@ After all tasks complete and verified:
 - Don't skip verifications
 - Between batches: report and wait
 - Stop when blocked, don't guess
+- Never start implementation on main/master branch without explicit user consent
