@@ -6,33 +6,58 @@ description: Create implementation plan with bite-sized tasks
 
 ## Overview
 
-Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
+Write comprehensive implementation plans assuming the engineer has zero context for the codebase. Document everything they need: which files to touch, code, testing, how to verify. Bite-sized tasks. DRY. YAGNI. Frequent commits.
 
-Assume they are a skilled developer, but know almost nothing about our toolset or problem domain. Assume they don't know good test design very well.
+**Announce at start:** "I'm using the work:write-plan skill to create the implementation plan."
 
-**Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
+## Plan Location
 
-**Context:** This should be run in a dedicated worktree (created by brainstorming skill).
+Plans are saved to the current project's directory in the Obsidian vault:
 
-**Save plans to:** `docs/plans/YYYY-MM-DD-<feature-name>.md`
+1. Determine the project slug from session context (`$CLAUDE_PROJECT` environment variable, injected by the SessionStart hook)
+2. If no session context, ask the user which project this plan belongs to
+3. Save to: `~/stripe/work/projects/<slug>/YYYY-MM-DD-<feature-name>.md`
+4. After writing, open the file in neovim:
+   ```bash
+   nvim-open --editor '<absolute-path-to-plan-file>'
+   ```
+
+## Plan Frontmatter
+
+Every plan file starts with:
+
+```yaml
+---
+status: active
+project: "[[projects/<slug>/project]]"
+---
+```
+
+## After Writing the Plan
+
+1. Add a wikilink to the project file's `## Plans` section:
+   ```markdown
+   - [[YYYY-MM-DD-<feature-name>]]
+   ```
+2. Open the plan file in neovim
 
 ## Bite-Sized Task Granularity
 
-**Each step is one action (2-5 minutes):**
-- "Write the failing test" - step
-- "Run it to make sure it fails" - step
-- "Implement the minimal code to make the test pass" - step
-- "Run the tests and make sure they pass" - step
-- "Commit" - step
+Each step is one action (2-5 minutes):
+- "Write the failing test" — step
+- "Run it to make sure it fails" — step
+- "Implement the minimal code to make the test pass" — step
+- "Run the tests and make sure they pass" — step
+- "Commit" — step
 
 ## Plan Document Header
 
-**Every plan MUST start with this header:**
+Every plan MUST start with this header:
 
 ```markdown
 # [Feature Name] Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For Claude:** REQUIRED SUB-SKILL: Use work:execute-plan to implement this plan task-by-task.
 
 **Goal:** [One sentence describing what this builds]
 
@@ -49,40 +74,23 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 ### Task N: [Component Name]
 
 **Files:**
-- Create: `exact/path/to/file.py`
-- Modify: `exact/path/to/existing.py:123-145`
-- Test: `tests/exact/path/to/test.py`
+- Create: `exact/path/to/file`
+- Modify: `exact/path/to/existing:123-145`
+- Test: `tests/exact/path/to/test`
 
-**Step 1: Write the failing test**
+**Step 1: [action]**
 
-```python
-def test_specific_behavior():
-    result = function(input)
-    assert result == expected
-```
+[complete code or exact command]
 
-**Step 2: Run test to verify it fails**
+**Step 2: [action]**
 
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: FAIL with "function not defined"
+[complete code or exact command]
 
-**Step 3: Write minimal implementation**
-
-```python
-def function(input):
-    return expected
-```
-
-**Step 4: Run test to verify it passes**
-
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: PASS
-
-**Step 5: Commit**
+**Step N: Commit**
 
 ```bash
-git add tests/path/test.py src/path/file.py
-git commit -m "feat: add specific feature"
+git add <files>
+git commit -m "feat: description"
 ```
 ````
 
@@ -90,26 +98,19 @@ git commit -m "feat: add specific feature"
 - Exact file paths always
 - Complete code in plan (not "add validation")
 - Exact commands with expected output
-- Reference relevant skills with @ syntax
-- DRY, YAGNI, TDD, frequent commits
+- DRY, YAGNI, frequent commits
 
 ## Execution Handoff
 
 After saving the plan, offer execution choice:
 
-**"Plan complete and saved to `docs/plans/<filename>.md`. Two execution options:**
+**"Plan saved to `<path>`. Two execution options:**
 
-**1. Subagent-Driven (this session)** - I dispatch fresh subagent per task, review between tasks, fast iteration
+**1. Subagent-Driven (this session)** — dispatch fresh subagent per task, review between tasks
 
-**2. Parallel Session (separate)** - Open new session with executing-plans, batch execution with checkpoints
+**2. Parallel Session (separate)** — open new session, use work:execute-plan
 
 **Which approach?"**
 
-**If Subagent-Driven chosen:**
-- **REQUIRED SUB-SKILL:** Use superpowers:subagent-driven-development
-- Stay in this session
-- Fresh subagent per task + code review
-
-**If Parallel Session chosen:**
-- Guide them to open new session in worktree
-- **REQUIRED SUB-SKILL:** New session uses superpowers:executing-plans
+If Subagent-Driven: use superpowers:subagent-driven-development.
+If Parallel Session: guide user to open new session and invoke work:execute-plan.
