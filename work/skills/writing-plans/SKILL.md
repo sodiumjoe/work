@@ -1,5 +1,5 @@
 ---
-name: write-plan
+name: writing-plans
 description: Use when you have a spec or requirements for a multi-step task, before touching code
 ---
 
@@ -9,7 +9,7 @@ description: Use when you have a spec or requirements for a multi-step task, bef
 
 Write comprehensive implementation plans assuming the engineer has zero context for the codebase. Document everything they need: which files to touch, code, testing, how to verify. Bite-sized tasks. DRY. YAGNI. Frequent commits.
 
-**Announce at start:** "I'm using the work:write-plan skill to create the implementation plan."
+**Announce at start:** "I'm using the work:writing-plans skill to create the implementation plan."
 
 ## Plan Location
 
@@ -58,7 +58,7 @@ Every plan MUST start with this header:
 ```markdown
 # [Feature Name] Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use work:execute-plan to implement this plan task-by-task.
+> **For Claude:** REQUIRED SUB-SKILL: Use work:executing-plans to implement this plan task-by-task.
 
 **Goal:** [One sentence describing what this builds]
 
@@ -109,9 +109,9 @@ After saving the plan, offer execution choice:
 
 **1. Subagent-Driven (this session)** — dispatch fresh subagent per task, review between tasks
 
-**2. Parallel Session (separate)** — open new session, use work:execute-plan
+**2. Parallel Session (separate)** — open new session, use work:executing-plans
 
 **Which approach?"**
 
-If Subagent-Driven: use superpowers:subagent-driven-development.
-If Parallel Session: guide user to open new session and invoke work:execute-plan.
+If Subagent-Driven: use work:subagent-driven-development.
+If Parallel Session: guide user to open new session and invoke work:executing-plans.

@@ -1,5 +1,5 @@
 ---
-name: execute-plan
+name: executing-plans
 description: Use when you have a written implementation plan to execute with review checkpoints
 ---
 
@@ -11,7 +11,7 @@ Load plan, review critically, execute tasks in batches, report for review betwee
 
 **Core principle:** Batch execution with checkpoints for review.
 
-**Announce at start:** "I'm using the work:execute-plan skill to implement this plan."
+**Announce at start:** "I'm using the work:executing-plans skill to implement this plan."
 
 ## The Process
 
@@ -49,7 +49,7 @@ After all tasks complete and verified:
    ```bash
    work complete <project-file> "<plan-title>"
    ```
-3. Use superpowers:finishing-a-development-branch to complete the work
+3. Use work:finishing-a-development-branch to complete the work
 
 ## When to Stop
 

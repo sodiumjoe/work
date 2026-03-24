@@ -1,5 +1,5 @@
 ---
-name: create-project
+name: brainstorming
 description: Use when starting new work that needs a project — brainstorms scope, creates project, optionally hands off to write-plan
 ---
 
@@ -9,7 +9,7 @@ description: Use when starting new work that needs a project — brainstorms sco
 
 Entry point for new work. Turn an idea into a fully formed design through collaborative dialogue, then create the project in the Obsidian vault.
 
-**Announce at start:** "I'm using the work:create-project skill to set up this project."
+**Announce at start:** "I'm using the work:brainstorming skill to set up this project."
 
 <HARD-GATE>
 Do NOT create the project directory, write any code, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
@@ -75,7 +75,7 @@ Once the design is approved:
 ## Assess Scope
 
 - **Small work** (can be done from the task list alone): stop here. Tell the user the project is ready and they can work from the task list.
-- **Larger work** (needs a formal implementation plan): hand off to `work:write-plan`. Do NOT invoke `superpowers:writing-plans` or any other implementation skill — `work:write-plan` is the only valid handoff.
+- **Larger work** (needs a formal implementation plan): hand off to `work:writing-plans`. Do NOT invoke any other implementation skill — `work:writing-plans` is the only valid handoff.
 
 ## Key Principles
 
