@@ -8,7 +8,7 @@ const { ensure, logSyncEntries, inject, injectReviews } = require(path.join(LIB,
 const { fetchReviews, fetchReviewsAsync } = require(path.join(LIB, 'reviews.js'));
 const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, projectDir, projectFile } = require(path.join(LIB, 'paths.js'));
 const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState } = require(path.join(LIB, 'scan.js'));
-const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, listProjects } = require(path.join(LIB, 'project.js'));
+const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, listProjects, syncPlans } = require(path.join(LIB, 'project.js'));
 const { writeWeeklySummary, isoWeek } = require(path.join(LIB, 'summary.js'));
 const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
 const { parse, serialize, appendToSection, extractSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
@@ -46,6 +46,8 @@ async function doGather(dateStr, quiet) {
   const reviewsPromise = fetchReviewsAsync();
   log('--- promote ---');
   try { promote(dateStr, q); } catch (e) { console.error('FAIL: promote'); errors.push(`promote: ${e.message}`); }
+  log('--- sync-plans ---');
+  try { syncPlans(q); } catch (e) { console.error('FAIL: sync-plans'); errors.push(`sync-plans: ${e.message}`); }
   log('--- scan ---');
   let scanResults = [];
   try {
@@ -184,6 +186,11 @@ const commands = {
     const dateStr = getDate(opts);
     const results = scanOpenItems();
     inject(dateStr, results);
+  },
+
+  'sync-plans'() {
+    const results = syncPlans();
+    if (results.length === 0) console.log('nothing to link');
   },
 
   async gather() {
@@ -535,6 +542,7 @@ Commands:
   sync [--apply]               Find unlogged changelog completions
   list-projects                List active/evergreen projects (TSV)
   inject                       Rebuild daily note tasks view from scan
+  sync-plans                   Link orphaned plans to projects
   gather                       Run ensure + promote + sync + scan + inject
   tick                         Maintenance: gather + sync + conditional wrap
   wrap                         End-of-day: sync + Claude summary + complete projects
