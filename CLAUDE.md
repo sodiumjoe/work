@@ -43,16 +43,17 @@ Daily    1──* Log entry (daily ## Log, each entry wikilinks back to source p
 |-------|----------|---------------|
 | Open tasks | Project `## Tasks` | Daily note `## Tasks` (via `scanOpenItems` → `inject`) |
 | Completed work | Project `## Changelog` | Daily note `## Log` (via `appendLog`) |
-| Plan linkage | Plan frontmatter `project` field | Project `## Plans` (manual) |
+| Plan linkage | Plan frontmatter `project` field | Project `## Plans` (via `syncPlans`) |
 | Task state | Checkbox: `[ ]` open, `[/]` in-progress, `[x]` done | — |
 
 ### Data flows
 
 **`work tick`:**
 1. `scanOpenItems()` reads all project `## Tasks` for open/in-progress items
-2. `inject()` replaces daily note `## Tasks` with grouped results (evergreen first, then active, then unassigned)
-3. `syncCheck()` finds changelog entries with today's date not yet in daily `## Log`
-4. `logSyncEntries()` appends missing entries to daily `## Log`
+2. `syncPlans()` scans colocated plan files for `project` frontmatter, appends missing wikilinks to project `## Plans` sections
+3. `inject()` replaces daily note `## Tasks` with grouped results (evergreen first, then active, then unassigned)
+4. `syncCheck()` finds changelog entries with today's date not yet in daily `## Log`
+5. `logSyncEntries()` appends missing entries to daily `## Log`
 
 **`work complete <project-file> <description>`:**
 1. `checkOff()` marks item done in project file — checks `## Tasks` first, then `## Changelog`, appends to `## Changelog` if not found
@@ -71,6 +72,7 @@ Daily    1──* Log entry (daily ## Log, each entry wikilinks back to source p
 | Plan missing `project` field | Orphaned, invisible to project | CLAUDE.md rule: required field |
 | Changelog in plan instead of project | Duplicate entries, `syncCheck` misses them | CLAUDE.md rule: no `## Changelog` in plans |
 | Task completed without `work complete` | Missing from daily `## Log` | `syncCheck` catches unsynced entries on next tick |
+| Project `## Plans` section out of sync | Plan invisible to project overview | `syncPlans()` auto-links on every tick |
 | Blocked task with no review date | Stale indefinitely | Manual triage during `/start-day` |
 
 ## Agents
