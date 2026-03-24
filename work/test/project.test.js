@@ -699,4 +699,285 @@ status: active
       );
     });
   });
+
+  describe("syncPlans", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("links colocated plan to its project", () => {
+      writeProject(
+        "alpha",
+        `---
+status: active
+---
+
+# Alpha
+
+## Plans
+
+## Tasks
+
+## Changelog`,
+      );
+      writePlanInProject(
+        "alpha",
+        "my-plan.md",
+        `---
+status: active
+project: "[[projects/alpha/project]]"
+---
+
+# My Plan`,
+      );
+
+      const { syncPlans } = requireFresh();
+      const added = syncPlans({ quiet: true });
+      assert.equal(added.length, 1);
+      assert.equal(added[0].slug, "alpha");
+      assert.equal(added[0].plan, "my-plan");
+
+      const result = fs.readFileSync(projectPath("alpha"), "utf-8");
+      assert.ok(result.includes("- [[my-plan|My Plan]]"));
+    });
+
+    it("skips plans already linked", () => {
+      writeProject(
+        "beta",
+        `---
+status: active
+---
+
+# Beta
+
+## Plans
+
+- [[existing-plan|Existing]]
+
+## Tasks
+
+## Changelog`,
+      );
+      writePlanInProject(
+        "beta",
+        "existing-plan.md",
+        `---
+status: active
+project: "[[projects/beta/project]]"
+---
+
+# Existing`,
+      );
+
+      const { syncPlans } = requireFresh();
+      const added = syncPlans({ quiet: true });
+      assert.equal(added.length, 0);
+    });
+
+    it("skips plans with no project field", () => {
+      writeProject(
+        "delta",
+        `---
+status: active
+---
+
+# Delta
+
+## Plans
+
+## Tasks
+
+## Changelog`,
+      );
+      writePlanInProject(
+        "delta",
+        "orphan.md",
+        `---
+status: active
+---
+
+# Orphan`,
+      );
+
+      const { syncPlans } = requireFresh();
+      const added = syncPlans({ quiet: true });
+      assert.equal(added.length, 0);
+    });
+
+    it("skips plans pointing to a different project", () => {
+      writeProject(
+        "epsilon",
+        `---
+status: active
+---
+
+# Epsilon
+
+## Plans
+
+## Tasks
+
+## Changelog`,
+      );
+      writePlanInProject(
+        "epsilon",
+        "misplaced.md",
+        `---
+status: active
+project: "[[projects/other-project/project]]"
+---
+
+# Misplaced`,
+      );
+
+      const { syncPlans } = requireFresh();
+      const added = syncPlans({ quiet: true });
+      assert.equal(added.length, 0);
+    });
+
+    it("skips completed projects", () => {
+      writeProject(
+        "done",
+        `---
+status: completed
+---
+
+# Done
+
+## Plans
+
+## Tasks
+
+## Changelog
+- [x] Item ✅ 2026-03-01`,
+      );
+      writePlanInProject(
+        "done",
+        "late-plan.md",
+        `---
+status: active
+project: "[[projects/done/project]]"
+---
+
+# Late Plan`,
+      );
+
+      const { syncPlans } = requireFresh();
+      const added = syncPlans({ quiet: true });
+      assert.equal(added.length, 0);
+    });
+
+    it("is idempotent", () => {
+      writeProject(
+        "zeta",
+        `---
+status: active
+---
+
+# Zeta
+
+## Plans
+
+## Tasks
+
+## Changelog`,
+      );
+      writePlanInProject(
+        "zeta",
+        "idempotent.md",
+        `---
+status: active
+project: "[[projects/zeta/project]]"
+---
+
+# Idempotent`,
+      );
+
+      const { syncPlans } = requireFresh();
+      syncPlans({ quiet: true });
+      const mod2 = requireFresh();
+      const added = mod2.syncPlans({ quiet: true });
+      assert.equal(added.length, 0);
+
+      const result = fs.readFileSync(projectPath("zeta"), "utf-8");
+      const matches = result.match(/\[\[idempotent/g);
+      assert.equal(matches.length, 1);
+    });
+
+    it("links multiple plans in one pass", () => {
+      writeProject(
+        "eta",
+        `---
+status: active
+---
+
+# Eta
+
+## Plans
+
+## Tasks
+
+## Changelog`,
+      );
+      writePlanInProject(
+        "eta",
+        "plan-a.md",
+        `---
+status: active
+project: "[[projects/eta/project]]"
+---
+
+# Plan A`,
+      );
+      writePlanInProject(
+        "eta",
+        "plan-b.md",
+        `---
+status: active
+project: "[[projects/eta/project]]"
+---
+
+# Plan B`,
+      );
+
+      const { syncPlans } = requireFresh();
+      const added = syncPlans({ quiet: true });
+      assert.equal(added.length, 2);
+
+      const result = fs.readFileSync(projectPath("eta"), "utf-8");
+      assert.ok(result.includes("[[plan-a|Plan A]]"));
+      assert.ok(result.includes("[[plan-b|Plan B]]"));
+    });
+
+    it("uses bare basename for plan with no title", () => {
+      writeProject(
+        "theta",
+        `---
+status: active
+---
+
+# Theta
+
+## Plans
+
+## Tasks
+
+## Changelog`,
+      );
+      writePlanInProject(
+        "theta",
+        "no-title.md",
+        `---
+status: active
+project: "[[projects/theta/project]]"
+---`,
+      );
+
+      const { syncPlans } = requireFresh();
+      const added = syncPlans({ quiet: true });
+      assert.equal(added.length, 1);
+
+      const result = fs.readFileSync(projectPath("theta"), "utf-8");
+      assert.ok(result.includes("- [[no-title]]"));
+    });
+  });
 });
