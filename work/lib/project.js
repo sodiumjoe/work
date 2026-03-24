@@ -1,6 +1,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { parseFrontmatter, extractSection, getTitle } = require("./markdown.js");
+const {
+  parse,
+  serialize,
+  findSection,
+  parseFrontmatter,
+  extractSection,
+  getTitle,
+} = require("./markdown.js");
 const {
   PROJECT_DIR,
   VAULT_ROOT,
@@ -152,6 +159,58 @@ function listProjects() {
   return results;
 }
 
+function resolveProjectSlug(projectField) {
+  const stripped = projectField.replace(/^\[\[/, "").replace(/\]\]$/, "");
+  return stripped.replace(/^projects\//, "").replace(/\/project$/, "");
+}
+
+function syncPlans({ quiet } = {}) {
+  if (!fs.existsSync(PROJECT_DIR)) return [];
+  const added = [];
+  const pending = new Map();
+  const entries = fs.readdirSync(PROJECT_DIR, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith("_") || entry.name.startsWith("-")) continue;
+    const slug = entry.name;
+    const pf = projectFile(slug);
+    if (!fs.existsSync(pf)) continue;
+    const content = fs.readFileSync(pf, "utf-8");
+    const fm = parseFrontmatter(content);
+    if (fm.status !== "active" && fm.status !== "evergreen") continue;
+    const dir = projectDir(slug);
+    const files = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".md") && f !== "project.md");
+    const plansText = extractSection(content, "Plans").join("\n");
+    for (const file of files) {
+      const basename = file.replace(/\.md$/, "");
+      const planContent = fs.readFileSync(path.join(dir, file), "utf-8");
+      const planFm = parseFrontmatter(planContent);
+      if (!planFm.project) continue;
+      if (resolveProjectSlug(planFm.project) !== slug) continue;
+      if (plansText.includes(`[[${basename}`)) continue;
+      const title = getTitle(planContent);
+      if (!pending.has(slug)) pending.set(slug, []);
+      pending.get(slug).push({ basename, title });
+    }
+  }
+  for (const [slug, plans] of pending) {
+    const pf = projectFile(slug);
+    const doc = parse(fs.readFileSync(pf, "utf-8"));
+    const section = findSection(doc, "Plans");
+    if (!section) continue;
+    for (const { basename, title } of plans) {
+      const link = title ? `- [[${basename}|${title}]]` : `- [[${basename}]]`;
+      section.lines.push(link);
+      added.push({ slug, plan: basename, title });
+      if (!quiet) console.log(`linked: ${basename} → ${slug}`);
+    }
+    fs.writeFileSync(pf, serialize(doc), "utf-8");
+  }
+  return added;
+}
+
 module.exports = {
   createProject,
   resolveProject,
@@ -159,4 +218,5 @@ module.exports = {
   completeProjects,
   archiveProject,
   listProjects,
+  syncPlans,
 };
