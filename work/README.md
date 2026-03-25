@@ -10,24 +10,21 @@ Daily work tracking with Obsidian integration for Claude Code. Manages daily not
 
 `<leader>aP` creates a new project from scratch — prompts for a title, generates the project file, opens it in a buffer, and starts a session scoped to it.
 
-`<leader>sP` opens a file picker for all project files (sorted by modification time). Opens the selected file without starting a session.
-
 ### During a session
 
 The session knows which project it belongs to. Use `EnterPlanMode` to plan implementation, then execute. When work is done:
 
-- Claude uses `work check-off <project-file> <description>` to mark changelog entries complete
-- Claude uses `work append-log <description> --source-type=project --source-slug=<slug> --source-title=<title>` to log completions to the daily note
+- Claude uses `work complete <project-file> <description>` to check off the item and log it to the daily note in one step
 - `/note` to record freeform observations, links, or discoveries
 - `/name` to relabel the tmux window if the focus shifts
 
 ### Adding tasks to a project
 
-Add `- [ ] Description` lines to the project's `## Changelog` section. They surface in the picker next time `<leader>ap` runs (or on the next `work tick`).
+Add `- [ ] Description` lines to the project's `## Tasks` section. They surface in the daily note queue on the next `work tick`.
 
 ### Lifecycle
 
-Open changelog items keep a project visible in the queue. When all items are checked off, `work tick` marks the project `status: completed` automatically. No manual cleanup needed.
+Open tasks and changelog items keep a project visible in the queue. When all items are checked off, `work tick` marks the project `status: completed` automatically. Completed projects get proposed for archival in the weekly archive queue. Approving the archive moves the project directory and its associated plans to `$WORK_VAULT/archive/`.
 
 ### Devbox workflow
 
@@ -36,7 +33,7 @@ The `dev` shell function connects the same task-picking flow to remote devboxes 
 ## Architecture
 
 ```
-work tick (manual) ──> gather + sync + conditional wrap
+work tick (manual) ──> gather + sync + archive + wrap + upstream
                             │
 User ──> /command ──> command prompt
               │       (commands/*.md)
@@ -55,52 +52,58 @@ The `work` CLI handles deterministic operations (file parsing, section insertion
 
 ```
 bin/work          CLI entrypoint
-lib/paths.js      Path constants (VAULT_ROOT, PLAN_DIR, PROJECT_DIR)
-lib/daily.js      Daily note operations (ensure, carry, mark, inject)
-lib/scan.js       Plan/project scanning (scanOpenItems, syncCheck)
-lib/project.js    Project file operations (createProject, resolveProject, completeProjects)
+lib/paths.js      Path constants (VAULT_ROOT, PROJECT_DIR, projectFile, notePath)
+lib/daily.js      Daily note operations (ensure, inject, logSyncEntries, injectReviews)
+lib/scan.js       Plan/project scanning (scanOpenItems, syncCheck, listTasks, setTaskState)
+lib/project.js    Project file operations (createProject, resolveProject, completeProjects,
+                    archiveProject, archivePlans, extractFindings, syncPlans)
 lib/changelog.js  Changelog mutations (checkOff, appendLog)
-lib/markdown.js   Markdown parsing (extractSection, parseFrontmatter)
+lib/markdown.js   Markdown parsing (parse, serialize, extractSection, parseFrontmatter)
 lib/checkbox.js   Checkbox parsing and state management
 lib/atomic.js     Atomic file rewrite (read-transform-rename)
+lib/promote.js    Move checked-off tasks to changelog
+lib/queue.js      Approval queue (enqueue, dequeue) for archive proposals
+lib/reviews.js    GitHub PR review fetching
+lib/summary.js    Weekly summary generation (writeWeeklySummary, isoWeek)
+lib/upstream.js   Skill drift detection (checkUpstream)
 ```
 
 ### Data flow
 
 ```
 work tick
-├── gather ──> ensure + promote + scan + inject
+├── gather ──> ensure + promote + sync-plans + scan + inject
 ├── sync --apply (flush unlogged completions)
+├── archive queue (dequeue approved archive proposals, run archiveProject)
+├── archive plans (archivePlans for completed-project plans, then extractFindings)
 ├── if weekly summary file missing:
-│   ├── propose archivable projects/plans
-│   └── write weekly summary (claude -p)
-└── for each previous day without ## Summary:
-    └── wrap
-        ├── sync --apply
-        ├── claude -p (LLM writes comprehensive summary)
-        └── completeProjects (mark fully done projects as completed)
-
-/next (interactive)
-├── work gather + sync --apply
-├── work queue (TSV of open items)
-├── work mark <item> '[/]' (set in progress)
-└── create-project + EnterPlanMode (new) or resume context (existing)
+│   ├── propose completed projects for archive queue
+│   └── write weekly summary
+├── for each previous day without ## Summary:
+│   └── wrap
+│       ├── sync --apply
+│       ├── claude -p (LLM writes comprehensive summary)
+│       └── completeProjects (mark fully done projects as completed)
+└── upstream drift (check forked skills for changes, file task if drifted)
 ```
 
 ### Automation: work tick
 
 Run `work tick` manually (or via neovim keybinds like `<leader>at`). `tick` does:
 
-1. **gather** — ensure daily note exists, promote completed tasks, scan all plans/projects for open items, inject them into the queue
+1. **gather** — ensure daily note exists, promote completed tasks, sync plan-project linkage, scan all plans/projects for open items, inject them into the queue
 2. **sync --apply** — find changelog entries completed today that aren't in the daily note's Log section, and add them
-3. **weekly proposals + summary** (once per week, gated on weekly summary file existence) — propose completed projects and orphaned plans for archival, write a weekly narrative summary via Claude
-4. **wrap** (previous days only) — scan backward up to 7 days for daily notes missing a `## Summary`, wrap each by syncing, spawning `claude -p` for a summary, and marking fully completed projects as `status: completed`
+3. **archive queue** — dequeue any user-approved archive proposals, run `archiveProject` for each
+4. **archive plans** — find plans linked to completed projects, move them to archive, spawn Claude to extract findings into the project's Notes section
+5. **weekly proposals + summary** (once per week, gated on weekly summary file existence) — propose completed projects for archival via the approval queue, write a weekly narrative summary
+6. **wrap** (previous days only) — scan backward up to 7 days for daily notes missing a `## Summary`, wrap each by syncing, spawning `claude -p` for a summary, and marking fully completed projects as `status: completed`
+7. **upstream drift** — check forked skills against their upstream sources, file a task in the work project if drift is detected
 
 If any step fails, `tick` spawns Claude to file a diagnostic task in the work project.
 
 ### Project lifecycle
 
-Active projects with no open changelog items get a synthetic `Review project: <title>` entry injected into the queue, ensuring every active project stays visible. When all changelog items in a project are checked off, `completeProjects` (called by `wrap`) flips the project status from `active` to `completed`.
+Active projects with no open tasks get a synthetic `Review project: <title>` entry injected into the queue, ensuring every active project stays visible. When all changelog items in a project are checked off, `completeProjects` (called by `wrap`) flips the project status from `active` to `completed`. Completed projects are proposed for archival in the next weekly tick; once approved, `archiveProject` moves the project directory and associated plans to `$WORK_VAULT/archive/`.
 
 ## CLI
 
@@ -109,29 +112,29 @@ work <command> [options]
 
 Commands:
   ensure                       Create today's daily note if missing
-  carry                        Carry forward open queue items from previous day
+  promote                      Move checked-off tasks to changelog
   sync [--apply]               Find unlogged changelog completions
   list-projects                List active/evergreen projects (TSV)
   inject                       Rebuild daily note tasks view from scan
-  gather                       Run ensure + carry + sync + scan + inject
+  sync-plans                   Link orphaned plans to projects
+  gather                       Run ensure + promote + sync + scan + inject
   tick                         Maintenance: gather + sync + conditional wrap
   wrap                         End-of-day: sync + Claude summary + complete projects
-  mark <substr> <status>       Toggle a queue item's checkbox
-  queue                        List open/in-progress queue items (TSV)
-  summary                      Generate end-of-day summary (deterministic, stdout)
-  check-off <file> <desc>      Check off or append a changelog entry
-  append-log <desc>            Append entry to daily note log section
+  summary                      Show completed and open items
+  list-tasks [file]            List open/in-progress tasks (TSV)
+  set-task-state <f> <ln> <s>  Set task checkbox state (open|in-progress|done)
+  complete <file> <desc>       Check off task and log to daily note
+  append-task <file> <desc>    Add a new task to a project's Tasks section
   create-project <slug> <title> Create a new project file
+  archive-project <slug>       Archive project and associated plans
   resolve-project <plan-file>  Find project file from plan frontmatter
-  paths [vault|plans|projects]  Print configured paths
+  paths [vault|projects]       Print configured paths
   parse-changelog <file> <pat> Extract matching changelog lines (TSV)
+  check-upstream               Check forked skills for upstream changes
   help                         Show this help
 
 Options:
   --date=YYYY-MM-DD            Override date (defaults to today)
-  --source-type=plan|project   Source type for append-log
-  --source-slug=<slug>         Source slug for append-log wikilink
-  --source-title=<title>       Source title for append-log wikilink
 ```
 
 ## Vim workflows
@@ -143,9 +146,12 @@ Task picking and project creation happen through Neovim keybinds (defined in `~/
 | `<leader>ap` | Pick a project, open project file, start an agentic session with project context |
 | `<leader>aP` | Create a new project (prompts for title), open project file, start agentic session |
 | `<leader>at` | Add a task to a project (prompts for description, then project picker) |
-| `<leader>sP` | Browse project files (file picker, no session) |
+| `<leader>st` | Task state picker (context-aware: current project buffer, or pick project first) |
+| `<leader>sT` | Task state picker (all active/evergreen projects) |
 
 Both `<leader>ap` and `<leader>aP` destroy the existing agentic session, set `CLAUDE_PROJECT` env var, and start a fresh session. The `session-project` hook injects the project file contents as context.
+
+`<leader>st` and `<leader>sT` open a task picker where Tab cycles checkbox state (`[ ]` → `[/]` → `[x]` → `[ ]`) and Enter opens the file at the task line.
 
 ## Slash commands
 
@@ -154,6 +160,18 @@ Both `<leader>ap` and `<leader>aP` destroy the existing agentic session, set `CL
 | `/note` | Append a note, link, or discovery to today's daily note |
 | `/name` | Set a descriptive label on the current tmux window |
 | `/archive-plans` | Archive completed plans and write a monthly summary |
+| `/write-plan` | Create an implementation plan for a project |
+| `/create-project` | Brainstorm scope and create a new project |
+| `/execute-plan` | Execute an implementation plan task-by-task with review checkpoints |
+
+## Agents
+
+Agents are specialized subprocesses invoked via the `Task` tool with `subagent_type: "work:<agent-name>"`. Defined in `work/agents/`.
+
+| Agent | Description |
+|-------|-------------|
+| `plan-reviewer` | Reviews implementation plans for completeness, risks, and codebase alignment (read-only) |
+| `code-reviewer` | Reviews code changes against plan and coding standards |
 
 ## Data model
 
@@ -171,7 +189,7 @@ Commands that output structured data use tab-separated values: `filename\ttitle\
 Path: `$WORK_VAULT/YYYY-MM-DD.md` (default: `~/work/YYYY-MM-DD.md`)
 
 ```markdown
-## Queue
+## Tasks
 - [ ] Open task — [[projects/project-slug|Project Title]]
 - [/] In-progress task — [[projects/project-slug|Project Title]]
 - [ ] Standalone task — [[plans/plan-file|Plan Title]]
@@ -186,23 +204,28 @@ Path: `$WORK_VAULT/YYYY-MM-DD.md` (default: `~/work/YYYY-MM-DD.md`)
 
 ### Project file format
 
-Path: `$WORK_VAULT/projects/<slug>.md`
+Path: `$WORK_VAULT/projects/<slug>/project.md`
 
 ```markdown
 ---
 status: active
+id: slug
 ---
 
 # Project Title
 
 ## Links
 ## Plans
+## Tasks
+- [ ] Pending task
+
 ## Changelog
 - [x] Completed step ✅ YYYY-MM-DD
-- [ ] Pending step
 
 ## Notes
 ```
+
+Tasks live in `## Tasks`; when checked off, `promote` moves them to `## Changelog` with a done-date suffix.
 
 ### Plan file format
 
@@ -268,10 +291,10 @@ All fields are optional. The `WORK_VAULT` environment variable takes precedence 
 |------|---------|
 | `$WORK_VAULT/` | Obsidian vault root |
 | `$WORK_VAULT/YYYY-MM-DD.md` | Daily notes |
-| `$WORK_VAULT/projects/` | Project files |
-| `$WORK_VAULT/plans/` | Active plan files (configured via `plansDirectory` setting) |
-| `$WORK_VAULT/archive/` | Archived plans |
-| `$WORK_VAULT/monthly/YYYY-MM.md` | Monthly work summaries |
+| `$WORK_VAULT/projects/<slug>/project.md` | Project files |
+| `$WORK_VAULT/plans/` | Active plan files |
+| `$WORK_VAULT/archive/` | Archived projects and plans |
+| `$WORK_VAULT/weekly/YYYY-WNN.md` | Weekly work summaries |
 
 ## Devbox integration
 
