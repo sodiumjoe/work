@@ -4,6 +4,7 @@ const {
   parse,
   serialize,
   findSection,
+  appendToSection,
   parseFrontmatter,
   extractSection,
   getTitle,
@@ -13,6 +14,7 @@ const {
   VAULT_ROOT,
   projectDir,
   projectFile,
+  notePath,
   todayStr,
 } = require("./paths.js");
 const { atomicRewrite } = require("./atomic.js");
@@ -198,6 +200,64 @@ function archivePlans({ quiet } = {}) {
   return archived;
 }
 
+function extractFindings(archivedPlans, dateStr, { quiet } = {}) {
+  if (archivedPlans.length === 0) return [];
+  const { execFileSync } = require("node:child_process");
+  const findings = [];
+  for (const plan of archivedPlans) {
+    const pf = projectFile(plan.slug);
+    const prompt = `Read the archived plan file at ${plan.archivePath} and the project file at ${pf}.
+
+Identify anything worth preserving from this completed plan:
+- Patterns discovered, gotchas, or workarounds
+- Architectural decisions and their rationale
+- Configuration details that might be needed again
+- Debugging insights
+
+Output a short summary (2-3 sentences max) of notable findings. If there is nothing worth preserving beyond what the project changelog already captures, respond with exactly: NONE`;
+
+    try {
+      const claudeCmd = process.env.WORK_CLAUDE_CMD || "claude";
+      const result = execFileSync(
+        claudeCmd,
+        ["-p", "--allowedTools", "Read", "Glob", "Grep"],
+        {
+          input: prompt,
+          stdio: ["pipe", "pipe", "inherit"],
+          timeout: 120000,
+          encoding: "utf-8",
+        },
+      );
+      const summary = result.trim();
+      if (summary && summary !== "NONE") {
+        findings.push({ plan, summary });
+      }
+    } catch (e) {
+      if (!quiet)
+        console.error(
+          `findings extraction failed for ${plan.basename}: ${e.message}`,
+        );
+    }
+  }
+  if (findings.length > 0) {
+    const np = notePath(dateStr);
+    if (fs.existsSync(np)) {
+      const lines = findings.map(
+        (f) =>
+          `- [ ] Review findings from "${f.plan.title || f.plan.basename}": ${f.summary}`,
+      );
+      atomicRewrite(np, (c) => {
+        const doc = parse(c);
+        appendToSection(doc, "Tasks", lines);
+        return serialize(doc);
+      });
+      if (!quiet)
+        console.log(`added ${findings.length} findings review task(s)`);
+    }
+  }
+  return findings;
+}
+
 function listProjects() {
   if (!fs.existsSync(PROJECT_DIR)) return [];
   const entries = fs.readdirSync(PROJECT_DIR, { withFileTypes: true });
@@ -277,6 +337,7 @@ module.exports = {
   completeProjects,
   archiveProject,
   archivePlans,
+  extractFindings,
   listProjects,
   syncPlans,
 };
