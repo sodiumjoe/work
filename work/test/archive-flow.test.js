@@ -586,6 +586,267 @@ completed_at: 2026-03-08
     });
   });
 
+  describe("tick archives evergreen plans", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("tick archives done plans from evergreen projects", () => {
+      const projDir = path.join(tmpDir, "projects", "my-evergreen");
+      fs.mkdirSync(projDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(projDir, "project.md"),
+        [
+          "---",
+          "status: evergreen",
+          "---",
+          "",
+          "# My Evergreen",
+          "",
+          "## Plans",
+          "- [[done-plan]]",
+          "- [[active-plan]]",
+          "",
+          "## Tasks",
+          "",
+          "## Changelog",
+          "",
+          "## Notes",
+        ].join("\n"),
+      );
+      fs.writeFileSync(
+        path.join(projDir, "done-plan.md"),
+        [
+          "---",
+          "status: done",
+          "---",
+          "",
+          "# Done Plan",
+          "",
+          "## Notes",
+          "Some notes here.",
+        ].join("\n"),
+      );
+      fs.writeFileSync(
+        path.join(projDir, "active-plan.md"),
+        [
+          "---",
+          "status: active",
+          "---",
+          "",
+          "# Active Plan",
+          "",
+          "## Notes",
+        ].join("\n"),
+      );
+
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+
+      fs.mkdirSync(path.join(tmpDir, "weekly"), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, "weekly", "2026-W11.md"), "# done");
+
+      const fakeClaude = path.join(tmpDir, "fake-claude.js");
+      fs.writeFileSync(
+        fakeClaude,
+        ["#!/usr/bin/env node", `process.stdout.write("NONE");`].join("\n"),
+        { mode: 0o755 },
+      );
+
+      const output = runWorkEnv(
+        { WORK_CLAUDE_CMD: fakeClaude },
+        "tick",
+        "--verbose",
+        "--date=2026-03-10",
+      );
+      assert.ok(output.includes("archived plan: done-plan"));
+      assert.ok(
+        fs.existsSync(
+          path.join(
+            tmpDir,
+            "archive",
+            "projects",
+            "my-evergreen",
+            "done-plan.md",
+          ),
+        ),
+      );
+      assert.ok(!fs.existsSync(path.join(projDir, "done-plan.md")));
+      assert.ok(fs.existsSync(path.join(projDir, "active-plan.md")));
+      const proj = fs.readFileSync(path.join(projDir, "project.md"), "utf-8");
+      assert.ok(!proj.includes("[[done-plan]]"));
+      assert.ok(proj.includes("[[active-plan]]"));
+    });
+
+    it("tick skips archive-plans when no evergreen plans are done", () => {
+      const projDir = path.join(tmpDir, "projects", "my-evergreen");
+      fs.mkdirSync(projDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(projDir, "project.md"),
+        [
+          "---",
+          "status: evergreen",
+          "---",
+          "",
+          "# My Evergreen",
+          "",
+          "## Plans",
+          "- [[active-plan]]",
+          "",
+          "## Tasks",
+          "",
+          "## Changelog",
+          "",
+          "## Notes",
+        ].join("\n"),
+      );
+      fs.writeFileSync(
+        path.join(projDir, "active-plan.md"),
+        [
+          "---",
+          "status: active",
+          "---",
+          "",
+          "# Active Plan",
+          "",
+          "## Notes",
+        ].join("\n"),
+      );
+
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+
+      fs.mkdirSync(path.join(tmpDir, "weekly"), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, "weekly", "2026-W11.md"), "# done");
+
+      const output = runWork("tick", "--verbose", "--date=2026-03-10");
+      assert.ok(output.includes("no plans to archive"));
+    });
+  });
+
+  describe("tick extractFindings integration", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("spawns claude and appends findings task to daily note", () => {
+      const projDir = path.join(tmpDir, "projects", "my-evergreen");
+      fs.mkdirSync(projDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(projDir, "project.md"),
+        [
+          "---",
+          "status: evergreen",
+          "---",
+          "",
+          "# My Evergreen",
+          "",
+          "## Plans",
+          "- [[done-plan]]",
+          "",
+          "## Tasks",
+          "",
+          "## Changelog",
+          "",
+          "## Notes",
+        ].join("\n"),
+      );
+      fs.writeFileSync(
+        path.join(projDir, "done-plan.md"),
+        [
+          "---",
+          "status: done",
+          "---",
+          "",
+          "# Done Plan",
+          "",
+          "## Notes",
+          "Always use --frozen-lockfile for reproducible builds.",
+        ].join("\n"),
+      );
+
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+
+      fs.mkdirSync(path.join(tmpDir, "weekly"), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, "weekly", "2026-W11.md"), "# done");
+
+      const fakeClaude = path.join(tmpDir, "fake-claude.js");
+      fs.writeFileSync(
+        fakeClaude,
+        [
+          "#!/usr/bin/env node",
+          `process.stdout.write("Discovery: always use --frozen-lockfile for reproducible builds.");`,
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+
+      const output = runWorkEnv(
+        { WORK_CLAUDE_CMD: fakeClaude },
+        "tick",
+        "--verbose",
+        "--date=2026-03-10",
+      );
+      assert.ok(output.includes("findings review task"));
+      const note = readDailyNote("2026-03-10");
+      assert.ok(note.includes("Review findings from"));
+      assert.ok(note.includes("frozen-lockfile"));
+    });
+
+    it("skips findings task when claude returns NONE", () => {
+      const projDir = path.join(tmpDir, "projects", "my-evergreen");
+      fs.mkdirSync(projDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(projDir, "project.md"),
+        [
+          "---",
+          "status: evergreen",
+          "---",
+          "",
+          "# My Evergreen",
+          "",
+          "## Plans",
+          "- [[done-plan]]",
+          "",
+          "## Tasks",
+          "",
+          "## Changelog",
+          "",
+          "## Notes",
+        ].join("\n"),
+      );
+      fs.writeFileSync(
+        path.join(projDir, "done-plan.md"),
+        [
+          "---",
+          "status: done",
+          "---",
+          "",
+          "# Done Plan",
+          "",
+          "## Notes",
+          "Nothing special.",
+        ].join("\n"),
+      );
+
+      writeDailyNote("2026-03-10", "## Tasks\n\n## Log\n");
+
+      fs.mkdirSync(path.join(tmpDir, "weekly"), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, "weekly", "2026-W11.md"), "# done");
+
+      const fakeClaude = path.join(tmpDir, "fake-claude.js");
+      fs.writeFileSync(
+        fakeClaude,
+        ["#!/usr/bin/env node", `process.stdout.write("NONE");`].join("\n"),
+        { mode: 0o755 },
+      );
+
+      runWorkEnv(
+        { WORK_CLAUDE_CMD: fakeClaude },
+        "tick",
+        "--verbose",
+        "--date=2026-03-10",
+      );
+      const note = readDailyNote("2026-03-10");
+      assert.ok(!note.includes("Review findings"));
+    });
+  });
+
   describe("tick writes weekly summary", () => {
     beforeEach(setup);
     afterEach(teardown);
