@@ -1,6 +1,10 @@
 ---
 name: executing-plans
 description: Use when you have a written implementation plan to execute with review checkpoints
+plugin: superpowers@stripe-internal-marketplace
+version: 1.0.1
+skill: executing-plans
+content_hash: d099fa42fd7518f4dafa9f2d51c1c08fce970490d57682b6acd3e7a57bb55b52
 ---
 
 # Executing Plans

@@ -29,36 +29,6 @@ function stripFrontmatter(content) {
   return content.trim();
 }
 
-function extractSections(text) {
-  const body = stripFrontmatter(text);
-  const sections = new Map();
-  let current = null;
-  for (const line of body.split("\n")) {
-    const m = line.match(/^## (.+)/);
-    if (m) {
-      current = m[1];
-      sections.set(current, []);
-    } else if (current) {
-      sections.get(current).push(line);
-    }
-  }
-  return [...sections.keys()];
-}
-
-function resolveUpstreamPath(fork) {
-  const [plugin] = fork.plugin.split("@");
-  const pluginDir = path.join(PLUGIN_CACHE, plugin);
-  if (!fs.existsSync(pluginDir)) return null;
-  const versions = fs.readdirSync(pluginDir).sort();
-  return path.join(
-    pluginDir,
-    versions[versions.length - 1],
-    "skills",
-    fork.skill,
-    "SKILL.md",
-  );
-}
-
 describe("commands", () => {
   const commandFiles = fs
     .readdirSync(COMMANDS_DIR)
@@ -120,102 +90,42 @@ describe("forked skills", () => {
     : [];
 
   for (const dir of skillDirs) {
-    const forkJsonPath = path.join(SKILLS_DIR, dir.name, "fork.json");
-    if (!fs.existsSync(forkJsonPath)) continue;
-    const fork = JSON.parse(fs.readFileSync(forkJsonPath, "utf-8"));
     const skillPath = path.join(SKILLS_DIR, dir.name, "SKILL.md");
+    if (!fs.existsSync(skillPath)) continue;
+    const content = fs.readFileSync(skillPath, "utf-8");
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!fmMatch) continue;
+    const fm = fmMatch[1];
+    const pluginMatch = fm.match(/plugin:\s*(.+)/);
+    const hashMatch = fm.match(/content_hash:\s*(.+)/);
+    const skillMatch = fm.match(/skill:\s*(.+)/);
+    if (!pluginMatch || !hashMatch || !skillMatch) continue;
 
     describe(dir.name, () => {
       it("upstream content_hash matches installed plugin", () => {
-        if (!fs.existsSync(PLUGIN_CACHE)) return;
-        const upstreamPath = resolveUpstreamPath(fork.upstream);
-        if (!upstreamPath || !fs.existsSync(upstreamPath)) return;
+        const plugin = pluginMatch[1].trim();
+        const [pluginName, registry] = plugin.split("@");
+        const pluginDir = path.join(PLUGIN_CACHE, pluginName);
+        if (!fs.existsSync(pluginDir)) return;
+        const versions = fs.readdirSync(pluginDir).sort();
+        if (versions.length === 0) return;
+        const upstreamPath = path.join(
+          pluginDir,
+          versions[versions.length - 1],
+          "skills",
+          skillMatch[1].trim(),
+          "SKILL.md",
+        );
+        if (!fs.existsSync(upstreamPath)) return;
         const hash = crypto
           .createHash("sha256")
           .update(fs.readFileSync(upstreamPath, "utf-8"))
           .digest("hex");
         assert.equal(
           hash,
-          fork.upstream.content_hash,
-          `upstream ${fork.upstream.plugin}:${fork.upstream.skill} has changed — ` +
-            `review changes and update fork.json content_hash`,
-        );
-      });
-
-      it("section_map covers all upstream sections", () => {
-        if (!fs.existsSync(PLUGIN_CACHE)) return;
-        const upstreamPath = resolveUpstreamPath(fork.upstream);
-        if (!upstreamPath || !fs.existsSync(upstreamPath)) return;
-        const upstreamSections = extractSections(
-          fs.readFileSync(upstreamPath, "utf-8"),
-        );
-        const mapped = new Set(Object.keys(fork.section_map));
-        const removed = new Set(fork.removed_sections);
-        const unaccounted = upstreamSections.filter(
-          (s) => !mapped.has(s) && !removed.has(s),
-        );
-        assert.deepEqual(
-          unaccounted,
-          [],
-          `upstream sections not in section_map or removed_sections: ${unaccounted.join(", ")} — ` +
-            `add to fork.json section_map or removed_sections`,
-        );
-      });
-
-      it("section_map targets exist in fork", () => {
-        const forkSections = new Set(
-          extractSections(fs.readFileSync(skillPath, "utf-8")),
-        );
-        const missing = Object.entries(fork.section_map)
-          .filter(([, target]) => !forkSections.has(target))
-          .map(([upstream, target]) => `${upstream} → ${target}`);
-        assert.deepEqual(
-          missing,
-          [],
-          `section_map targets missing from fork: ${missing.join(", ")}`,
-        );
-      });
-
-      it("added_sections exist in fork", () => {
-        const forkSections = new Set(
-          extractSections(fs.readFileSync(skillPath, "utf-8")),
-        );
-        const missing = fork.added_sections.filter((s) => !forkSections.has(s));
-        assert.deepEqual(
-          missing,
-          [],
-          `added_sections missing from fork: ${missing.join(", ")}`,
-        );
-      });
-
-      it("removed_sections are absent from fork", () => {
-        const forkSections = new Set(
-          extractSections(fs.readFileSync(skillPath, "utf-8")),
-        );
-        const present = fork.removed_sections.filter((s) =>
-          forkSections.has(s),
-        );
-        assert.deepEqual(
-          present,
-          [],
-          `removed_sections still present in fork: ${present.join(", ")}`,
-        );
-      });
-
-      it("fork has no unclassified sections", () => {
-        const forkSections = extractSections(
-          fs.readFileSync(skillPath, "utf-8"),
-        );
-        const mapped = new Set(Object.values(fork.section_map));
-        const added = new Set(fork.added_sections);
-        const unclassified = forkSections.filter(
-          (s) => !mapped.has(s) && !added.has(s),
-        );
-        assert.deepEqual(
-          unclassified,
-          [],
-          `fork sections not in section_map or added_sections: ${unclassified.join(", ")} — ` +
-            `add to fork.json section_map or added_sections`,
+          hashMatch[1].trim(),
+          `upstream ${plugin}:${skillMatch[1].trim()} has changed — ` +
+            `run \`work check-upstream --diff\` to review`,
         );
       });
     });

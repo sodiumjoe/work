@@ -1,6 +1,10 @@
 ---
 name: writing-skills
 description: Use when creating new skills, editing existing skills, or verifying skills work before deployment
+plugin: superpowers@stripe-internal-marketplace
+version: 1.0.1
+skill: writing-skills
+content_hash: d83a09d6a1c6976f6cc2f40addeae653a4a6eb5903097ebc365d90242e00e379
 ---
 
 # Writing Skills

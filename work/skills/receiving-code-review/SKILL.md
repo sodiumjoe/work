@@ -1,6 +1,10 @@
 ---
 name: receiving-code-review
 description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+plugin: superpowers@stripe-internal-marketplace
+version: 1.0.1
+skill: receiving-code-review
+content_hash: c9382e92b8f32363566068ecfed19d3b2651eaf40d3942b24840f839dedfc406
 ---
 
 # Code Review Reception

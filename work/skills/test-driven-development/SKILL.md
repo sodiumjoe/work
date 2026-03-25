@@ -1,6 +1,10 @@
 ---
 name: test-driven-development
 description: Use when implementing any feature or bugfix, before writing implementation code
+plugin: superpowers@stripe-internal-marketplace
+version: 1.0.1
+skill: test-driven-development
+content_hash: 7dee67b4af6bdccc7a914ca34533184d64592d0f5b23aeae631538168db14994
 ---
 
 # Test-Driven Development (TDD)

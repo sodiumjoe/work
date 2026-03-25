@@ -1,6 +1,10 @@
 ---
 name: subagent-driven-development
 description: Use when executing implementation plans with independent tasks in the current session
+plugin: superpowers@stripe-internal-marketplace
+version: 1.0.1
+skill: subagent-driven-development
+content_hash: 994b89a5d294eadd6a1611edb51377bac748d5f5fb7f4139d3c736b616b3a46a
 ---
 
 # Subagent-Driven Development
