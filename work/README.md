@@ -24,7 +24,7 @@ Add `- [ ] Description` lines to the project's `## Tasks` section. They surface 
 
 ### Lifecycle
 
-Open tasks and changelog items keep a project visible in the queue. When all items are checked off, `work tick` marks the project `status: completed` automatically. Completed projects get proposed for archival in the weekly archive queue. Approving the archive moves the project directory and its associated plans to `$WORK_VAULT/archive/`.
+Open tasks and changelog items keep a project visible in the queue. When all items are checked off, `work tick` marks the project `status: completed` automatically. Completed projects get proposed for archival in the weekly archive queue; approving the archive moves the entire project directory to `$WORK_VAULT/archive/projects/`. Evergreen projects are never completed, but their individual done plans are archived automatically by `tick`, with findings extracted into the project's Notes section.
 
 ### Devbox workflow
 
@@ -74,8 +74,9 @@ lib/upstream.js   Skill drift detection (checkUpstream)
 work tick
 ├── gather ──> ensure + promote + sync-plans + scan + inject
 ├── sync --apply (flush unlogged completions)
-├── archive queue (dequeue approved archive proposals, run archiveProject)
-├── archive plans (archivePlans for completed-project plans, then extractFindings)
+├── archive queue (dequeue approved proposals, archiveProject for each)
+├── archive evergreen plans (find done/completed plans in evergreen projects,
+│     move to archive, extractFindings via Claude)
 ├── if weekly summary file missing:
 │   ├── propose completed projects for archive queue
 │   └── write weekly summary
@@ -93,8 +94,8 @@ Run `work tick` manually (or via neovim keybinds like `<leader>at`). `tick` does
 
 1. **gather** — ensure daily note exists, promote completed tasks, sync plan-project linkage, scan all plans/projects for open items, inject them into the queue
 2. **sync --apply** — find changelog entries completed today that aren't in the daily note's Log section, and add them
-3. **archive queue** — dequeue any user-approved archive proposals, run `archiveProject` for each
-4. **archive plans** — find plans linked to completed projects, move them to archive, spawn Claude to extract findings into the project's Notes section
+3. **archive queue** — dequeue any user-approved archive proposals, run `archiveProject` for each (moves the entire project directory to `archive/projects/`)
+4. **archive evergreen plans** — scan evergreen projects for plan files with `status: done` or `status: completed`, move them to `archive/projects/<slug>/`, remove stale wikilinks from the project's `## Plans` section, then spawn Claude via `extractFindings` to distill notable patterns or decisions into the project's `## Notes`
 5. **weekly proposals + summary** (once per week, gated on weekly summary file existence) — propose completed projects for archival via the approval queue, write a weekly narrative summary
 6. **wrap** (previous days only) — scan backward up to 7 days for daily notes missing a `## Summary`, wrap each by syncing, spawning `claude -p` for a summary, and marking fully completed projects as `status: completed`
 7. **upstream drift** — check forked skills against their upstream sources, file a task in the work project if drift is detected
@@ -103,7 +104,9 @@ If any step fails, `tick` spawns Claude to file a diagnostic task in the work pr
 
 ### Project lifecycle
 
-Active projects with no open tasks get a synthetic `Review project: <title>` entry injected into the queue, ensuring every active project stays visible. When all changelog items in a project are checked off, `completeProjects` (called by `wrap`) flips the project status from `active` to `completed`. Completed projects are proposed for archival in the next weekly tick; once approved, `archiveProject` moves the project directory and associated plans to `$WORK_VAULT/archive/`.
+Active projects with no open tasks get a synthetic `Review project: <title>` entry injected into the queue, ensuring every active project stays visible. When all changelog items in a project are checked off, `completeProjects` (called by `wrap`) flips the project status from `active` to `completed`. Completed projects are proposed for archival in the next weekly tick; once approved, `archiveProject` moves the entire project directory to `$WORK_VAULT/archive/projects/`.
+
+Evergreen projects are never completed, but their individual plans accumulate over time. `archivePlans` (called by `tick`) finds plan files with `status: done/completed` inside evergreen project directories, moves them to `archive/projects/<slug>/`, and spawns Claude to extract findings worth preserving into the project's Notes section.
 
 ## CLI
 
