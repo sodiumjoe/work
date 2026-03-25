@@ -14,6 +14,7 @@ const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
 const { parse, serialize, appendToSection, extractSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
 const { checkOff, appendLog } = require(path.join(LIB, 'changelog.js'));
 const { promote } = require(path.join(LIB, 'promote.js'));
+const { checkUpstream } = require(path.join(LIB, 'upstream.js'));
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -444,6 +445,33 @@ const commands = {
       if (/^## Summary/m.test(prevNote)) break;
       log(`=== wrap ${prevDate} ===`);
       doWrap(prevDate);
+    }
+
+    log('=== upstream drift ===');
+    try {
+      const upstreamResults = checkUpstream();
+      const drifted = upstreamResults.filter(r => r.status === 'drifted');
+      if (drifted.length > 0) {
+        const names = drifted.map(r => r.skill).join(', ');
+        log(`drift detected: ${names}`);
+        const workProjectPath = projectFile('work');
+        if (fs.existsSync(workProjectPath)) {
+          const content = fs.readFileSync(workProjectPath, 'utf-8');
+          if (!/^- \[[ /]\] Review upstream skill drift/m.test(content)) {
+            const doc = parse(content);
+            appendToSection(doc, 'Tasks', [`- [ ] Review upstream skill drift: ${names} — run \`work check-upstream --diff\``]);
+            fs.writeFileSync(workProjectPath, serialize(doc), 'utf-8');
+            log('added task to work project');
+          } else {
+            log('drift task already exists, skipping');
+          }
+        }
+      } else {
+        log('all skills up to date');
+      }
+    } catch (e) {
+      console.error('FAIL: upstream drift check');
+      errors.push(`upstream-drift: ${e.message}`);
     }
 
     if (opts['simulate-error']) {

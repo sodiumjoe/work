@@ -157,3 +157,95 @@ describe("checkUpstream", () => {
     assert.equal(bySkill.c, undefined);
   });
 });
+
+describe("tick upstream drift integration", { concurrency: 1 }, () => {
+  let tmpDir, origVault, origXdg;
+  const workBin = path.join(__dirname, "..", "bin", "work");
+  const { execFileSync } = require("node:child_process");
+
+  function setup() {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "upstream-tick-"));
+    fs.mkdirSync(path.join(tmpDir, "projects", "work"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, "config", "work"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "config", "work", "config.json"),
+      JSON.stringify({}),
+    );
+    origVault = process.env.WORK_VAULT;
+    origXdg = process.env.XDG_CONFIG_HOME;
+  }
+
+  function teardown() {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (origVault === undefined) delete process.env.WORK_VAULT;
+    else process.env.WORK_VAULT = origVault;
+    if (origXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = origXdg;
+  }
+
+  function runTick(extraEnv = {}) {
+    const today = new Date().toISOString().slice(0, 10);
+    const dailyNote = `---\nid: "${today}"\ntags: [daily-notes]\n---\n\n## Reviews\n\n## Tasks\n\n## Log\n`;
+    fs.writeFileSync(path.join(tmpDir, `${today}.md`), dailyNote);
+    return execFileSync("node", [workBin, "tick", "--verbose"], {
+      env: {
+        ...process.env,
+        WORK_VAULT: tmpDir,
+        XDG_CONFIG_HOME: path.join(tmpDir, "config"),
+        WORK_TEST_HOUR: "10",
+        WORK_SKIP_REVIEWS: "1",
+        CLAUDECODE: "",
+        ...extraEnv,
+      },
+      encoding: "utf-8",
+      timeout: 10000,
+    });
+  }
+
+  function projectPath() {
+    return path.join(tmpDir, "projects", "work", "project.md");
+  }
+
+  beforeEach(setup);
+  afterEach(teardown);
+
+  it("tick logs 'all skills up to date' when no drift", () => {
+    fs.writeFileSync(
+      projectPath(),
+      "---\nstatus: evergreen\n---\n\n# Work\n\n## Tasks\n\n## Changelog\n",
+    );
+    const output = runTick();
+    assert.ok(
+      output.includes("all skills up to date"),
+      `expected "all skills up to date" in: ${output}`,
+    );
+    const content = fs.readFileSync(projectPath(), "utf-8");
+    assert.ok(!content.includes("Review upstream skill drift"));
+  });
+
+  it("tick does not duplicate drift task if one exists", () => {
+    fs.writeFileSync(
+      projectPath(),
+      "---\nstatus: evergreen\n---\n\n# Work\n\n## Tasks\n- [ ] Review upstream skill drift: foo — run `work check-upstream --diff`\n\n## Changelog\n",
+    );
+    const output = runTick();
+    const content = fs.readFileSync(projectPath(), "utf-8");
+    const matches = content.match(/Review upstream skill drift/g);
+    assert.equal(matches.length, 1, "should not duplicate drift task");
+  });
+
+  it("tick does not duplicate drift task if one is in-progress", () => {
+    fs.writeFileSync(
+      projectPath(),
+      "---\nstatus: evergreen\n---\n\n# Work\n\n## Tasks\n- [/] Review upstream skill drift: foo — run `work check-upstream --diff`\n\n## Changelog\n",
+    );
+    const output = runTick();
+    const content = fs.readFileSync(projectPath(), "utf-8");
+    const matches = content.match(/Review upstream skill drift/g);
+    assert.equal(
+      matches.length,
+      1,
+      "should not duplicate in-progress drift task",
+    );
+  });
+});
