@@ -8,7 +8,7 @@ const { ensure, logSyncEntries, inject, injectReviews } = require(path.join(LIB,
 const { fetchReviews, fetchReviewsAsync } = require(path.join(LIB, 'reviews.js'));
 const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, projectDir, projectFile } = require(path.join(LIB, 'paths.js'));
 const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState } = require(path.join(LIB, 'scan.js'));
-const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, listProjects, syncPlans } = require(path.join(LIB, 'project.js'));
+const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, archivePlans, extractFindings, listProjects, syncPlans } = require(path.join(LIB, 'project.js'));
 const { writeWeeklySummary, isoWeek } = require(path.join(LIB, 'summary.js'));
 const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
 const { parse, serialize, appendToSection, extractSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
@@ -384,6 +384,26 @@ const commands = {
     } catch (e) {
       console.error('FAIL: archive dequeue');
       errors.push(`archive-dequeue: ${e.message}`);
+    }
+
+    log('=== archive plans ===');
+    try {
+      const archivedPlans = archivePlans({ quiet });
+      if (archivedPlans.length > 0) {
+        log(`archived ${archivedPlans.length} plan(s)`);
+        log('=== extract findings ===');
+        try {
+          extractFindings(archivedPlans, dateStr, { quiet });
+        } catch (e) {
+          console.error('FAIL: extract findings');
+          errors.push(`extract-findings: ${e.message}`);
+        }
+      } else {
+        log('no plans to archive');
+      }
+    } catch (e) {
+      console.error('FAIL: archive plans');
+      errors.push(`archive-plans: ${e.message}`);
     }
 
     const [y, m, d] = dateStr.split('-').map(Number);
