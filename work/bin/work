@@ -476,56 +476,27 @@ const commands = {
   },
 
   'check-upstream'() {
-    const crypto = require('node:crypto');
-    const skillsDir = path.join(__dirname, '..', 'skills');
-    if (!fs.existsSync(skillsDir)) {
-      console.log('no skills directory found');
-      return;
-    }
-    const skillDirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter(e => e.isDirectory());
+    const { opts } = parseOpts(args.slice(1));
+    const { checkUpstream } = require(path.join(LIB, 'upstream.js'));
+    const results = checkUpstream();
     let drifted = 0;
-    for (const dir of skillDirs) {
-      const skillFile = path.join(skillsDir, dir.name, 'SKILL.md');
-      if (!fs.existsSync(skillFile)) continue;
-      const content = fs.readFileSync(skillFile, 'utf-8');
-      const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!fmMatch) continue;
-      const fm = fmMatch[1];
-      const pluginMatch = fm.match(/plugin:\s*(.+)/);
-      const versionMatch = fm.match(/version:\s*(.+)/);
-      const skillMatch = fm.match(/skill:\s*(.+)/);
-      const hashMatch = fm.match(/content_hash:\s*(.+)/);
-      if (!pluginMatch || !hashMatch || !skillMatch) continue;
-      const plugin = pluginMatch[1].trim();
-      const storedHash = hashMatch[1].trim();
-      const upstreamSkill = skillMatch[1].trim();
-      const [pluginName, registry] = plugin.split('@');
-      const cacheBase = path.join(process.env.HOME, '.claude', 'plugins', 'cache', registry || '', pluginName);
-      if (!fs.existsSync(cacheBase)) {
-        console.log(`${dir.name}: upstream cache not found at ${cacheBase}`);
-        continue;
-      }
-      const versions = fs.readdirSync(cacheBase, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name).sort();
-      if (versions.length === 0) continue;
-      const latestVersion = versions[versions.length - 1];
-      const upstreamFile = path.join(cacheBase, latestVersion, 'skills', upstreamSkill, 'SKILL.md');
-      if (!fs.existsSync(upstreamFile)) {
-        console.log(`${dir.name}: upstream skill file not found at ${upstreamFile}`);
-        continue;
-      }
-      const upstreamContent = fs.readFileSync(upstreamFile, 'utf-8');
-      const currentHash = crypto.createHash('sha256').update(upstreamContent).digest('hex');
-      if (currentHash !== storedHash) {
-        console.log(`${dir.name}: DRIFT DETECTED (forked: ${storedHash.slice(0, 8)}… current: ${currentHash.slice(0, 8)}…)`);
-        if (versionMatch) {
-          const forkedVersion = versionMatch[1].trim();
-          if (forkedVersion !== latestVersion) {
-            console.log(`  version changed: ${forkedVersion} → ${latestVersion}`);
-          }
+    for (const r of results) {
+      if (r.status === 'drifted') {
+        console.log(`${r.skill}: DRIFT DETECTED (forked: ${r.storedHash.slice(0, 8)}… current: ${r.currentHash.slice(0, 8)}…)`);
+        if (r.forkedVersion && r.forkedVersion !== r.latestVersion) {
+          console.log(`  version changed: ${r.forkedVersion} → ${r.latestVersion}`);
+        }
+        if (opts.diff) {
+          const { execFileSync } = require('node:child_process');
+          try {
+            execFileSync('diff', ['-u', r.localFile, r.upstreamFile], { stdio: 'inherit' });
+          } catch (_) {}
         }
         drifted++;
+      } else if (r.status === 'no-cache' || r.status === 'no-upstream') {
+        console.log(`${r.skill}: ${r.message}`);
       } else {
-        console.log(`${dir.name}: up to date`);
+        console.log(`${r.skill}: up to date`);
       }
     }
     if (drifted > 0) process.exitCode = 1;
