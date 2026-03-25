@@ -139,6 +139,65 @@ function archiveProject(slug, { quiet } = {}) {
   if (!quiet) console.log(`archived project: ${slug}`);
 }
 
+function archivePlans({ quiet } = {}) {
+  if (!fs.existsSync(PROJECT_DIR)) return [];
+  const entries = fs.readdirSync(PROJECT_DIR, { withFileTypes: true });
+  const archived = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith("_") || entry.name.startsWith("-")) continue;
+    const slug = entry.name;
+    const pf = projectFile(slug);
+    if (!fs.existsSync(pf)) continue;
+    const content = fs.readFileSync(pf, "utf-8");
+    const fm = parseFrontmatter(content);
+    if (fm.status !== "evergreen") continue;
+    const dir = projectDir(slug);
+    const files = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".md") && f !== "project.md");
+    const toArchive = [];
+    for (const file of files) {
+      const planContent = fs.readFileSync(path.join(dir, file), "utf-8");
+      const planFm = parseFrontmatter(planContent);
+      if (planFm.status !== "done" && planFm.status !== "completed") continue;
+      const basename = file.replace(/\.md$/, "");
+      const title = getTitle(planContent);
+      toArchive.push({ file, basename, title });
+    }
+    if (toArchive.length === 0) continue;
+    const archiveDir = path.join(VAULT_ROOT, "archive", "projects", slug);
+    fs.mkdirSync(archiveDir, { recursive: true });
+    for (const plan of toArchive) {
+      const src = path.join(dir, plan.file);
+      const dest = path.join(archiveDir, plan.file);
+      fs.renameSync(src, dest);
+      archived.push({
+        slug,
+        file: plan.file,
+        basename: plan.basename,
+        title: plan.title,
+        archivePath: dest,
+      });
+      if (!quiet) console.log(`archived plan: ${plan.basename} (${slug})`);
+    }
+    const doc = parse(fs.readFileSync(pf, "utf-8"));
+    const plansSection = findSection(doc, "Plans");
+    if (plansSection) {
+      const basenames = new Set(toArchive.map((p) => p.basename));
+      plansSection.lines = plansSection.lines.filter((line) => {
+        for (const bn of basenames) {
+          if (line.includes(`[[${bn}`) || line.includes(`[[archive/${bn}`))
+            return false;
+        }
+        return true;
+      });
+      fs.writeFileSync(pf, serialize(doc), "utf-8");
+    }
+  }
+  return archived;
+}
+
 function listProjects() {
   if (!fs.existsSync(PROJECT_DIR)) return [];
   const entries = fs.readdirSync(PROJECT_DIR, { withFileTypes: true });
@@ -217,6 +276,7 @@ module.exports = {
   parseChangelog,
   completeProjects,
   archiveProject,
+  archivePlans,
   listProjects,
   syncPlans,
 };
