@@ -505,7 +505,6 @@ const commands = {
 
   'check-upstream'() {
     const { opts } = parseOpts(args.slice(1));
-    const { checkUpstream } = require(path.join(LIB, 'upstream.js'));
     const results = checkUpstream();
     let drifted = 0;
     for (const r of results) {

@@ -137,6 +137,39 @@ describe("checkUpstream", () => {
     assert.equal(results[0].status, "no-upstream");
   });
 
+  it("picks latest version by semver, not lexicographic order", () => {
+    const upstream = "---\nname: ver\n---\n# ver";
+    const homeDir = path.join(tmpDir, "home");
+    process.env.HOME = homeDir;
+    const skillsDir = path.join(tmpDir, "skills");
+    fs.mkdirSync(path.join(skillsDir, "ver"), { recursive: true });
+    fs.writeFileSync(
+      path.join(skillsDir, "ver", "SKILL.md"),
+      makeFrontmatter("ver", upstream),
+    );
+    const cacheBase = path.join(
+      homeDir,
+      ".claude",
+      "plugins",
+      "cache",
+      "stripe-internal-marketplace",
+      "superpowers",
+    );
+    for (const v of ["1.0.1", "1.0.9", "1.0.10", "1.0.2"]) {
+      const dir = path.join(cacheBase, v, "skills", "ver");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "SKILL.md"),
+        v === "1.0.10" ? "---\nname: ver\n---\n# ver CHANGED" : upstream,
+      );
+    }
+    const { checkUpstream } = requireFresh(path.join(LIB, "upstream.js"));
+    const results = checkUpstream(skillsDir);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].status, "drifted");
+    assert.equal(results[0].latestVersion, "1.0.10");
+  });
+
   it("handles multiple skills with mixed statuses", () => {
     const upA = "---\nname: a\n---\n# a";
     const upB = "---\nname: b\n---\n# b v1";
@@ -221,6 +254,53 @@ describe("tick upstream drift integration", { concurrency: 1 }, () => {
     );
     const content = fs.readFileSync(projectPath(), "utf-8");
     assert.ok(!content.includes("Review upstream skill drift"));
+  });
+
+  it("tick appends drift task when drift detected and no task exists", () => {
+    fs.writeFileSync(
+      projectPath(),
+      "---\nstatus: evergreen\n---\n\n# Work\n\n## Tasks\n\n## Changelog\n",
+    );
+    const fakeHome = path.join(tmpDir, "home");
+    const skillsDir = path.join(tmpDir, "fakeskills");
+    const upstreamContent =
+      "---\nname: test-skill\n---\n# test-skill v2 changed";
+    const originalContent = "---\nname: test-skill\n---\n# test-skill v1";
+    const storedHash = crypto
+      .createHash("sha256")
+      .update(originalContent)
+      .digest("hex");
+    fs.mkdirSync(path.join(skillsDir, "test-skill"), { recursive: true });
+    fs.writeFileSync(
+      path.join(skillsDir, "test-skill", "SKILL.md"),
+      `---\nname: test-skill\nplugin: superpowers@stripe-internal-marketplace\nversion: 1.0.1\nskill: test-skill\ncontent_hash: ${storedHash}\n---\n\n# test-skill`,
+    );
+    const cacheDir = path.join(
+      fakeHome,
+      ".claude",
+      "plugins",
+      "cache",
+      "stripe-internal-marketplace",
+      "superpowers",
+      "1.0.1",
+      "skills",
+      "test-skill",
+    );
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(path.join(cacheDir, "SKILL.md"), upstreamContent);
+    const output = runTick({
+      HOME: fakeHome,
+      WORK_SKILLS_DIR: skillsDir,
+    });
+    assert.ok(
+      output.includes("drift detected"),
+      `expected "drift detected" in: ${output}`,
+    );
+    const content = fs.readFileSync(projectPath(), "utf-8");
+    assert.ok(
+      content.includes("Review upstream skill drift: test-skill"),
+      `expected drift task in project file: ${content}`,
+    );
   });
 
   it("tick does not duplicate drift task if one exists", () => {

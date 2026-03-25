@@ -2,7 +2,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
-const SKILLS_DIR = path.join(__dirname, "..", "skills");
+const SKILLS_DIR =
+  process.env.WORK_SKILLS_DIR || path.join(__dirname, "..", "skills");
 
 function checkUpstream(skillsDir = SKILLS_DIR) {
   if (!fs.existsSync(skillsDir)) return [];
@@ -47,7 +48,15 @@ function checkUpstream(skillsDir = SKILLS_DIR) {
       .readdirSync(cacheBase, { withFileTypes: true })
       .filter((e) => e.isDirectory())
       .map((e) => e.name)
-      .sort();
+      .sort((a, b) => {
+        const pa = a.split(".").map(Number);
+        const pb = b.split(".").map(Number);
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+          const diff = (pa[i] || 0) - (pb[i] || 0);
+          if (diff !== 0) return diff;
+        }
+        return 0;
+      });
     if (versions.length === 0) continue;
     const latestVersion = versions[versions.length - 1];
     const upstreamFile = path.join(
