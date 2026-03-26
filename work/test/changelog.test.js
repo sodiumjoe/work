@@ -52,43 +52,43 @@ describe("changelog", { concurrency: 1 }, () => {
     return fs.readFileSync(path.join(tmpDir, `${dateStr}.md`), "utf-8");
   }
 
-  describe("checkOff", () => {
+  describe("closeTask", () => {
     beforeEach(setup);
     afterEach(teardown);
     it("checks off an existing open item", () => {
-      const { checkOff } = requireFresh();
+      const { closeTask } = requireFresh();
       const f = path.join(tmpDir, "test.md");
       fs.writeFileSync(
         f,
         "# Plan\n\n## Changelog\n- [ ] Fix the bug\n- [ ] Add tests\n\n## Notes",
       );
-      checkOff(f, "Fix the bug", "2026-03-05", { quiet: true });
+      closeTask(f, "Fix the bug", "2026-03-05", { quiet: true });
       const result = fs.readFileSync(f, "utf-8");
       assert.ok(result.includes("- [x] Fix the bug ✅ 2026-03-05"));
       assert.ok(result.includes("- [ ] Add tests"));
     });
 
     it("appends if no matching item", () => {
-      const { checkOff } = requireFresh();
+      const { closeTask } = requireFresh();
       const f = path.join(tmpDir, "test.md");
       fs.writeFileSync(
         f,
         "# Plan\n\n## Changelog\n- [ ] Existing item\n\n## Notes",
       );
-      checkOff(f, "New work", "2026-03-05", { quiet: true });
+      closeTask(f, "New work", "2026-03-05", { quiet: true });
       const result = fs.readFileSync(f, "utf-8");
       assert.ok(result.includes("- [x] New work ✅ 2026-03-05"));
       assert.ok(result.includes("- [ ] Existing item"));
     });
 
     it("matches by substring", () => {
-      const { checkOff } = requireFresh();
+      const { closeTask } = requireFresh();
       const f = path.join(tmpDir, "test.md");
       fs.writeFileSync(
         f,
         "# Plan\n\n## Changelog\n- [ ] Implement feature X with tests\n\n## Notes",
       );
-      checkOff(f, "feature X", "2026-03-05", { quiet: true });
+      closeTask(f, "feature X", "2026-03-05", { quiet: true });
       const result = fs.readFileSync(f, "utf-8");
       assert.ok(
         result.includes("- [x] Implement feature X with tests ✅ 2026-03-05"),
@@ -96,10 +96,10 @@ describe("changelog", { concurrency: 1 }, () => {
     });
 
     it("throws on missing file", () => {
-      const { checkOff } = requireFresh();
+      const { closeTask } = requireFresh();
       assert.throws(
         () =>
-          checkOff("/nonexistent/path.md", "desc", "2026-01-01", {
+          closeTask("/nonexistent/path.md", "desc", "2026-01-01", {
             quiet: true,
           }),
         /file not found/,
@@ -107,29 +107,54 @@ describe("changelog", { concurrency: 1 }, () => {
     });
 
     it("creates Changelog section if missing and appends", () => {
-      const { checkOff } = requireFresh();
+      const { closeTask } = requireFresh();
       const f = path.join(tmpDir, "test.md");
       fs.writeFileSync(f, "# Plan\n\n## Notes");
-      checkOff(f, "New item", "2026-03-05", { quiet: true });
+      closeTask(f, "New item", "2026-03-05", { quiet: true });
       const result = fs.readFileSync(f, "utf-8");
       assert.ok(result.includes("## Changelog"));
       assert.ok(result.includes("- [x] New item ✅ 2026-03-05"));
     });
 
     it("checks off item in Tasks section", () => {
-      const { checkOff } = requireFresh();
+      const { closeTask } = requireFresh();
       const f = path.join(tmpDir, "test.md");
       fs.writeFileSync(
         f,
         "# Proj\n\n## Tasks\n- [ ] Build feature\n\n## Changelog\n\n## Notes",
       );
-      const action = checkOff(f, "Build feature", "2026-03-05", {
+      const action = closeTask(f, "Build feature", "2026-03-05", {
         quiet: true,
       });
       assert.equal(action, "checked");
       const result = fs.readFileSync(f, "utf-8");
-      assert.ok(result.includes("- [x] Build feature"));
-      assert.ok(!result.includes("✅"));
+      assert.ok(result.includes("- [x] Build feature ✅ 2026-03-05"));
+    });
+
+    it("cancels a task with [-] when cancel option is set", () => {
+      const { closeTask } = requireFresh();
+      const f = path.join(tmpDir, "test.md");
+      fs.writeFileSync(
+        f,
+        "# Proj\n\n## Tasks\n- [ ] Skipped task\n- [ ] Kept task\n\n## Changelog\n\n## Notes",
+      );
+      const action = closeTask(f, "Skipped task", "2026-03-05", {
+        quiet: true,
+        cancel: true,
+      });
+      assert.equal(action, "cancelled");
+      const result = fs.readFileSync(f, "utf-8");
+      assert.ok(result.includes("- [-] Skipped task"));
+      assert.ok(!result.includes("✅ 2026-03-05"));
+      assert.ok(result.includes("- [ ] Kept task"));
+    });
+
+    it("applyCloseTask mutates content without file I/O", () => {
+      const { applyCloseTask } = requireFresh();
+      const content = "# Proj\n\n## Tasks\n- [ ] Do thing\n\n## Changelog";
+      const result = applyCloseTask(content, "Do thing", "2026-03-05");
+      assert.equal(result.action, "checked");
+      assert.ok(result.content.includes("- [x] Do thing ✅ 2026-03-05"));
     });
   });
 
