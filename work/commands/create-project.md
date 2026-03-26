@@ -74,7 +74,7 @@ Once the design is approved:
 ## Assess Scope
 
 - **Small work** (can be done from the task list alone): stop here. Tell the user the project is ready and they can work from the task list.
-- **Larger work** (needs a formal implementation plan): hand off to `work:write-plan`. Do NOT invoke `superpowers:writing-plans` or any other implementation skill — `work:write-plan` is the only valid handoff.
+- **Larger work** (needs a formal implementation plan): hand off to `work:write-plan`. Do NOT invoke `superpowers:writing-plans` or any other writing/implementation skill — `work:write-plan` is the only valid handoff.
 
 ## Key Principles
 

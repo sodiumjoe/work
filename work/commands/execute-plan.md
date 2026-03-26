@@ -23,6 +23,8 @@ Load plan, review critically, execute tasks in batches, report for review betwee
 ### Step 2: Execute Batch
 **Default: first 3 tasks**
 
+**Always use subagent mode** (`work:subagent-driven-development`) to execute tasks. Do not use parallel agent dispatch or execute tasks sequentially in the main context.
+
 For each task:
 1. Mark as in_progress
 2. Follow each step exactly (plan has bite-sized steps)
@@ -48,7 +50,7 @@ After all tasks complete and verified:
    ```bash
    work complete <project-file> "<plan-title>"
    ```
-3. Use superpowers:finishing-a-development-branch to complete the work
+3. Use work:finishing-a-development-branch to complete the work
 
 ## When to Stop
 

@@ -1,5 +1,8 @@
 ---
 description: Create implementation plan with bite-sized tasks
+aliases: []
+id: write-plan
+tags: []
 ---
 
 # Writing Plans
@@ -112,5 +115,5 @@ After saving the plan, offer execution choice:
 
 **Which approach?"**
 
-If Subagent-Driven: use superpowers:subagent-driven-development.
+If Subagent-Driven: use work:subagent-driven-development.
 If Parallel Session: guide user to open new session and invoke work:execute-plan.

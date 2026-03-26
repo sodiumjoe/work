@@ -1,7 +1,7 @@
 ---
 name: using-git-worktrees
 description: Use when starting feature work that needs isolation from current workspace or before executing implementation plans - creates isolated git worktrees with smart directory selection and safety verification
-plugin: superpowers@stripe-internal-marketplace
+plugin: work
 version: 1.0.1
 skill: using-git-worktrees
 content_hash: 6273509e3f4b0017832f394d1ec7a7ba5ffb76f1bae73139cf57f524550f60cd
@@ -47,7 +47,7 @@ If no directory exists and no CLAUDE.md preference:
 No worktree directory found. Where should I create worktrees?
 
 1. .worktrees/ (project-local, hidden)
-2. ~/.config/superpowers/worktrees/<project-name>/ (global location)
+2. ~/.config/work/worktrees/<project-name>/ (global location)
 
 Which would you prefer?
 ```
@@ -72,7 +72,7 @@ Per Jesse's rule "Fix broken things immediately":
 
 **Why critical:** Prevents accidentally committing worktree contents to repository.
 
-### For Global Directory (~/.config/superpowers/worktrees)
+### For Global Directory (~/.config/work/worktrees)
 
 No .gitignore verification needed - outside project entirely.
 
@@ -92,8 +92,8 @@ case $LOCATION in
   .worktrees|worktrees)
     path="$LOCATION/$BRANCH_NAME"
     ;;
-  ~/.config/superpowers/worktrees/*)
-    path="~/.config/superpowers/worktrees/$project/$BRANCH_NAME"
+  ~/.config/work/worktrees/*)
+    path="~/.config/work/worktrees/$project/$BRANCH_NAME"
     ;;
 esac
 
