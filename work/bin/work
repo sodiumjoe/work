@@ -12,7 +12,7 @@ const { createProject, resolveProject, parseChangelog, completeProjects, archive
 const { writeWeeklySummary, isoWeek } = require(path.join(LIB, 'summary.js'));
 const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
 const { parse, serialize, appendToSection, extractSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
-const { checkOff, appendLog } = require(path.join(LIB, 'changelog.js'));
+const { closeTask, appendLog } = require(path.join(LIB, 'changelog.js'));
 const { promote } = require(path.join(LIB, 'promote.js'));
 const { checkUpstream } = require(path.join(LIB, 'upstream.js'));
 
@@ -299,7 +299,7 @@ const commands = {
     if (positional.length < 2) {
       throw new Error('usage: work check-off <file> <description>');
     }
-    checkOff(positional[0], positional[1], dateStr);
+    closeTask(positional[0], positional[1], dateStr);
   },
 
   'append-log'() {
@@ -351,7 +351,7 @@ const commands = {
     const description = positional[1];
 
     // Check off the item in the source file
-    checkOff(filePath, description, dateStr);
+    closeTask(filePath, description, dateStr);
 
     // Determine source metadata from file path
     let sourceType, sourceSlug, sourceTitle;

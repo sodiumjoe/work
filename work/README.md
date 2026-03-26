@@ -57,7 +57,7 @@ lib/daily.js      Daily note operations (ensure, inject, logSyncEntries, injectR
 lib/scan.js       Plan/project scanning (scanOpenItems, syncCheck, listTasks, setTaskState)
 lib/project.js    Project file operations (createProject, resolveProject, completeProjects,
                     archiveProject, archivePlans, extractFindings, syncPlans)
-lib/changelog.js  Changelog mutations (checkOff, appendLog)
+lib/changelog.js  Changelog mutations (closeTask, appendLog)
 lib/markdown.js   Markdown parsing (parse, serialize, extractSection, parseFrontmatter)
 lib/checkbox.js   Checkbox parsing and state management
 lib/atomic.js     Atomic file rewrite (read-transform-rename)

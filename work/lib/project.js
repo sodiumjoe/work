@@ -18,7 +18,7 @@ const {
   todayStr,
 } = require("./paths.js");
 const { atomicRewrite } = require("./atomic.js");
-const { checkOff, appendLog } = require("./changelog.js");
+const { closeTask, applyCloseTask, appendLog } = require("./changelog.js");
 
 function createProject(slug, title) {
   if (!slug || /[\s/]/.test(slug)) {
@@ -360,21 +360,22 @@ function closeTasks(filePath, skipLines, dateStr, { quiet } = {}) {
       }
     }
     if (headerIdx === -1) return content;
+    const tasks = [];
     for (let i = headerIdx + 1; i < lines.length; i++) {
       if (/^## /.test(lines[i])) break;
       if (/^- \[[ /]\] /.test(lines[i])) {
-        const fileLineNum = i + 1;
         const text = lines[i].replace(/^- \[.\] /, "");
-        if (skipSet.has(fileLineNum)) {
-          lines[i] = `- [-] ${text}`;
-          cancelled++;
-        } else {
-          lines[i] = `- [x] ${text} ✅ ${dateStr}`;
-          completed++;
-        }
+        const skip = skipSet.has(i + 1);
+        tasks.push({ text, skip });
       }
     }
-    return lines.join("\n");
+    for (const { text, skip } of tasks) {
+      const result = applyCloseTask(content, text, dateStr, { cancel: skip });
+      content = result.content;
+      if (skip) cancelled++;
+      else completed++;
+    }
+    return content;
   });
   if (!quiet) {
     console.log(`closed tasks: ${completed} completed, ${cancelled} cancelled`);
@@ -399,7 +400,7 @@ function closeProject(slug, summary, dateStr, { quiet } = {}) {
   if (!fs.existsSync(daily)) {
     throw new Error("no daily note; run work ensure first");
   }
-  checkOff(filePath, summary, dateStr, { quiet });
+  closeTask(filePath, summary, dateStr, { quiet });
   atomicRewrite(filePath, (c) => {
     c = c.replace(/^status:\s*active\s*$/m, "status: completed");
     if (!/^completed_at:/m.test(c)) {

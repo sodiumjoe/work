@@ -27,7 +27,7 @@ Rewrote from bash scripts to Node.js modules with a single `work` CLI.
 - Fixed `lib/daily.js` inject — no double-blank-lines when inserting before section
 - Fixed `lib/project.js` — regex try/catch in parseChangelog, throws instead of process.exit
 - Fixed `scripts/nvim-edit` — relative path resolution instead of hardcoded absolute path
-- Created `lib/changelog.js` — `checkOff` and `appendLog` functions
+- Created `lib/changelog.js` — `closeTask` and `appendLog` functions
 - Added `work check-off` and `work append-log` CLI commands
 - Updated `commands/log.md` — uses CLI commands instead of LLM file editing
 - Added `work queue` command — TSV output of open/in-progress queue items
@@ -35,7 +35,7 @@ Rewrote from bash scripts to Node.js modules with a single `work` CLI.
 - All lib modules throw errors instead of calling process.exit
 - Added error wrapper in bin/work for consistent exit handling
 - Added package.json with test script and engine requirement
-- Added tests: parseFrontmatter unclosed, parseStatusArg, checkOff
+- Added tests: parseFrontmatter unclosed, parseStatusArg, closeTask
 
 ## 1.2.0 — 2026-02-26
 

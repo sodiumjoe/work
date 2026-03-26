@@ -9,55 +9,69 @@ const {
 const { atomicRewrite } = require("./atomic.js");
 const { notePath } = require("./paths.js");
 
-function checkOff(filePath, description, dateStr, { quiet } = {}) {
+function applyCloseTask(content, description, dateStr, { cancel } = {}) {
+  const doc = parse(content);
+  let action;
+  let found = false;
+
+  mutateSection(doc, "Tasks", (lines) => {
+    for (let i = 0; i < lines.length; i++) {
+      if (/^- \[[ /]\]/.test(lines[i])) {
+        const text = lines[i].replace(/^- \[.\] /, "");
+        if (text === description || text.includes(description)) {
+          if (cancel) {
+            lines[i] = `- [-] ${text}`;
+            action = "cancelled";
+          } else {
+            lines[i] = `- [x] ${text} ✅ ${dateStr}`;
+            action = "checked";
+          }
+          found = true;
+          break;
+        }
+      }
+    }
+    return lines;
+  });
+  if (found) return { content: serialize(doc), action };
+
+  if (cancel) return { content, action: undefined };
+
+  if (!findSection(doc, "Changelog")) {
+    doc.sections.push({ name: "Changelog", lines: [] });
+  }
+
+  mutateSection(doc, "Changelog", (lines) => {
+    for (let i = 0; i < lines.length; i++) {
+      if (/^- \[ \]/.test(lines[i])) {
+        const text = lines[i].replace(/^- \[ \] /, "");
+        if (text === description || text.includes(description)) {
+          lines[i] = `- [x] ${text} ✅ ${dateStr}`;
+          found = true;
+          action = "checked";
+          break;
+        }
+      }
+    }
+    return lines;
+  });
+  if (found) return { content: serialize(doc), action };
+
+  const entry = `- [x] ${description} ✅ ${dateStr}`;
+  action = "appended";
+  appendToSection(doc, "Changelog", [entry]);
+  return { content: serialize(doc), action };
+}
+
+function closeTask(filePath, description, dateStr, { quiet, cancel } = {}) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`file not found: ${filePath}`);
   }
   let action;
   atomicRewrite(filePath, (content) => {
-    const doc = parse(content);
-
-    let found = false;
-    mutateSection(doc, "Tasks", (lines) => {
-      for (let i = 0; i < lines.length; i++) {
-        if (/^- \[[ /]\]/.test(lines[i])) {
-          const text = lines[i].replace(/^- \[.\] /, "");
-          if (text === description || text.includes(description)) {
-            lines[i] = `- [x] ${text}`;
-            found = true;
-            action = "checked";
-            break;
-          }
-        }
-      }
-      return lines;
-    });
-    if (found) return serialize(doc);
-
-    if (!findSection(doc, "Changelog")) {
-      doc.sections.push({ name: "Changelog", lines: [] });
-    }
-
-    mutateSection(doc, "Changelog", (lines) => {
-      for (let i = 0; i < lines.length; i++) {
-        if (/^- \[ \]/.test(lines[i])) {
-          const text = lines[i].replace(/^- \[ \] /, "");
-          if (text === description || text.includes(description)) {
-            lines[i] = `- [x] ${text} ✅ ${dateStr}`;
-            found = true;
-            action = "checked";
-            break;
-          }
-        }
-      }
-      return lines;
-    });
-    if (found) return serialize(doc);
-
-    const entry = `- [x] ${description} ✅ ${dateStr}`;
-    action = "appended";
-    appendToSection(doc, "Changelog", [entry]);
-    return serialize(doc);
+    const result = applyCloseTask(content, description, dateStr, { cancel });
+    action = result.action;
+    return result.content;
   });
   if (!quiet) console.log(`${action}: ${description}`);
   return action;
@@ -92,4 +106,4 @@ function appendLog(
   if (!quiet) console.log(entry);
 }
 
-module.exports = { checkOff, appendLog };
+module.exports = { closeTask, applyCloseTask, appendLog };

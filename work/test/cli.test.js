@@ -123,7 +123,7 @@ status: active
       );
 
       const proj = fs.readFileSync(projectPath("proj"), "utf-8");
-      assert.ok(proj.includes("- [x] Build feature"));
+      assert.ok(proj.includes("- [x] Build feature ✅ 2026-03-10"));
 
       const note = readDailyNote("2026-03-10");
       assert.ok(note.includes("Build feature"));
