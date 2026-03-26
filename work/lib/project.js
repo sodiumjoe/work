@@ -18,6 +18,7 @@ const {
   todayStr,
 } = require("./paths.js");
 const { atomicRewrite } = require("./atomic.js");
+const { checkOff, appendLog } = require("./changelog.js");
 
 function createProject(slug, title) {
   if (!slug || /[\s/]/.test(slug)) {
@@ -369,6 +370,39 @@ function closeTasks(filePath, skipLines, dateStr, { quiet } = {}) {
   return { completed, cancelled };
 }
 
+function closeProject(slug, summary, dateStr, { quiet } = {}) {
+  const filePath = projectFile(slug);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`project not found: ${slug}`);
+  }
+  const content = fs.readFileSync(filePath, "utf-8");
+  const tasks = extractSection(content, "Tasks");
+  const openTasks = tasks.filter((l) => /^- \[[ /]\] /.test(l));
+  if (openTasks.length > 0) {
+    throw new Error(
+      `open tasks remain (${openTasks.length}); run close-tasks first`,
+    );
+  }
+  const daily = notePath(dateStr);
+  if (!fs.existsSync(daily)) {
+    throw new Error("no daily note; run work ensure first");
+  }
+  checkOff(filePath, summary, dateStr, { quiet });
+  atomicRewrite(filePath, (c) => {
+    c = c.replace(/^status:\s*active\s*$/m, "status: completed");
+    if (!/^completed_at:/m.test(c)) {
+      c = c.replace(
+        /^status:\s*completed\s*$/m,
+        `status: completed\ncompleted_at: ${dateStr}`,
+      );
+    }
+    return c;
+  });
+  const title = getTitle(content) || slug;
+  appendLog(dateStr, summary, "project", slug, title, { quiet });
+  if (!quiet) console.log(`closed project: ${title} (${slug})`);
+}
+
 module.exports = {
   createProject,
   resolveProject,
@@ -380,4 +414,5 @@ module.exports = {
   listProjects,
   syncPlans,
   closeTasks,
+  closeProject,
 };

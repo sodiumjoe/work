@@ -754,6 +754,153 @@ status: active
     });
   });
 
+  describe("closeProject", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("appends summary to changelog, sets completed status, logs to daily", () => {
+      writeProject(
+        "proj",
+        `---
+status: active
+---
+
+# My Project
+
+## Tasks
+- [x] Done task ✅ 2026-03-20
+
+## Changelog
+
+## Notes`,
+      );
+      fs.writeFileSync(
+        path.join(tmpDir, "2026-03-25.md"),
+        `---
+id: "2026-03-25"
+tags: [daily-notes]
+---
+
+# 2026-03-25
+
+## Tasks
+
+## Log
+
+## Archive`,
+      );
+
+      const { closeProject } = requireFresh();
+      closeProject("proj", "Implemented the full feature", "2026-03-25", {
+        quiet: true,
+      });
+
+      const project = fs.readFileSync(projectPath("proj"), "utf-8");
+      assert.ok(project.includes("status: completed"));
+      assert.ok(project.includes("completed_at: 2026-03-25"));
+      assert.ok(
+        project.includes("- [x] Implemented the full feature ✅ 2026-03-25"),
+      );
+
+      const daily = fs.readFileSync(
+        path.join(tmpDir, "2026-03-25.md"),
+        "utf-8",
+      );
+      assert.ok(daily.includes("Implemented the full feature"));
+      assert.ok(daily.includes("[[projects/proj/project|My Project]]"));
+    });
+
+    it("throws if daily note is missing", () => {
+      writeProject(
+        "proj",
+        `---
+status: active
+---
+
+# My Project
+
+## Tasks
+- [x] Done task ✅ 2026-03-20
+
+## Changelog
+
+## Notes`,
+      );
+
+      const { closeProject } = requireFresh();
+      assert.throws(
+        () => closeProject("proj", "Summary", "2026-03-25", { quiet: true }),
+        /no daily note/,
+      );
+    });
+
+    it("does not duplicate completed_at if already present", () => {
+      writeProject(
+        "proj",
+        `---
+status: active
+completed_at: 2026-03-20
+---
+
+# My Project
+
+## Tasks
+- [x] Done task ✅ 2026-03-20
+
+## Changelog
+
+## Notes`,
+      );
+      fs.writeFileSync(
+        path.join(tmpDir, "2026-03-25.md"),
+        `---
+id: "2026-03-25"
+tags: [daily-notes]
+---
+
+# 2026-03-25
+
+## Tasks
+
+## Log
+
+## Archive`,
+      );
+
+      const { closeProject } = requireFresh();
+      closeProject("proj", "Final summary", "2026-03-25", { quiet: true });
+
+      const project = fs.readFileSync(projectPath("proj"), "utf-8");
+      assert.ok(project.includes("completed_at: 2026-03-20"));
+      const matches = project.match(/completed_at:/g);
+      assert.strictEqual(matches.length, 1);
+    });
+
+    it("throws if open tasks remain", () => {
+      writeProject(
+        "open",
+        `---
+status: active
+---
+
+# Open
+
+## Tasks
+- [ ] Still open
+
+## Changelog
+
+## Notes`,
+      );
+
+      const { closeProject } = requireFresh();
+      assert.throws(
+        () => closeProject("open", "Summary", "2026-03-25", { quiet: true }),
+        /open tasks remain/,
+      );
+    });
+  });
+
   describe("parseChangelog", () => {
     beforeEach(setup);
     afterEach(teardown);
