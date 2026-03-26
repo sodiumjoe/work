@@ -330,6 +330,45 @@ function syncPlans({ quiet } = {}) {
   return added;
 }
 
+function closeTasks(filePath, skipLines, dateStr, { quiet } = {}) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`file not found: ${filePath}`);
+  }
+  const skipSet = new Set(skipLines);
+  let completed = 0;
+  let cancelled = 0;
+  atomicRewrite(filePath, (content) => {
+    const lines = content.split("\n");
+    let headerIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^## Tasks\s*$/.test(lines[i])) {
+        headerIdx = i;
+        break;
+      }
+    }
+    if (headerIdx === -1) return content;
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+      if (/^## /.test(lines[i])) break;
+      if (/^- \[[ /]\] /.test(lines[i])) {
+        const fileLineNum = i + 1;
+        const text = lines[i].replace(/^- \[.\] /, "");
+        if (skipSet.has(fileLineNum)) {
+          lines[i] = `- [-] ${text}`;
+          cancelled++;
+        } else {
+          lines[i] = `- [x] ${text} ✅ ${dateStr}`;
+          completed++;
+        }
+      }
+    }
+    return lines.join("\n");
+  });
+  if (!quiet) {
+    console.log(`closed tasks: ${completed} completed, ${cancelled} cancelled`);
+  }
+  return { completed, cancelled };
+}
+
 module.exports = {
   createProject,
   resolveProject,
@@ -340,4 +379,5 @@ module.exports = {
   extractFindings,
   listProjects,
   syncPlans,
+  closeTasks,
 };

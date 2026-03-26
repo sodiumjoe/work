@@ -650,6 +650,110 @@ status: active
     });
   });
 
+  describe("closeTasks", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("marks all open tasks as done with date stamp", () => {
+      writeProject(
+        "closing",
+        `---
+status: active
+---
+
+# Closing
+
+## Tasks
+- [ ] First task
+- [/] Second task
+- [x] Already done ✅ 2026-03-01
+
+## Changelog
+
+## Notes`,
+      );
+
+      const { closeTasks } = requireFresh();
+      const result = closeTasks(projectPath("closing"), [], "2026-03-25", {
+        quiet: true,
+      });
+      assert.deepEqual(result, { completed: 2, cancelled: 0 });
+
+      const content = fs.readFileSync(projectPath("closing"), "utf-8");
+      assert.ok(content.includes("- [x] First task ✅ 2026-03-25"));
+      assert.ok(content.includes("- [x] Second task ✅ 2026-03-25"));
+      assert.ok(content.includes("- [x] Already done ✅ 2026-03-01"));
+    });
+
+    it("marks skipped line numbers as cancelled", () => {
+      const projectContent = `---
+status: active
+---
+
+# Skip Test
+
+## Tasks
+- [ ] Task one
+- [ ] Task two
+- [ ] Task three
+
+## Changelog
+
+## Notes`;
+      writeProject("skip", projectContent);
+
+      const raw = fs.readFileSync(projectPath("skip"), "utf-8");
+      const lines = raw.split("\n");
+      let taskTwoLine;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes("Task two")) {
+          taskTwoLine = i + 1;
+          break;
+        }
+      }
+
+      const { closeTasks } = requireFresh();
+      const result = closeTasks(
+        projectPath("skip"),
+        [taskTwoLine],
+        "2026-03-25",
+        { quiet: true },
+      );
+      assert.deepEqual(result, { completed: 2, cancelled: 1 });
+
+      const content = fs.readFileSync(projectPath("skip"), "utf-8");
+      assert.ok(content.includes("- [x] Task one ✅ 2026-03-25"));
+      assert.ok(content.includes("- [-] Task two"));
+      assert.ok(!content.includes("- [-] Task two ✅"));
+      assert.ok(content.includes("- [x] Task three ✅ 2026-03-25"));
+    });
+
+    it("returns zero counts when no open tasks", () => {
+      writeProject(
+        "all-done",
+        `---
+status: active
+---
+
+# All Done
+
+## Tasks
+- [x] Already done ✅ 2026-03-01
+- [x] Also done ✅ 2026-03-02
+
+## Changelog
+
+## Notes`,
+      );
+
+      const { closeTasks } = requireFresh();
+      const result = closeTasks(projectPath("all-done"), [], "2026-03-25", {
+        quiet: true,
+      });
+      assert.deepEqual(result, { completed: 0, cancelled: 0 });
+    });
+  });
+
   describe("parseChangelog", () => {
     beforeEach(setup);
     afterEach(teardown);
