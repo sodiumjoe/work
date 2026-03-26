@@ -362,6 +362,154 @@ status: active
     });
   });
 
+  describe("work close-tasks", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("bulk-closes open tasks and outputs counts", () => {
+      writeProject(
+        "proj",
+        `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] First task
+- [ ] Second task
+- [/] Third task
+
+## Changelog
+
+## Notes`,
+      );
+
+      const output = runWork(
+        "close-tasks",
+        projectPath("proj"),
+        "--date=2026-03-25",
+      );
+      assert.match(output, /3\t0/);
+
+      const result = fs.readFileSync(projectPath("proj"), "utf-8");
+      assert.ok(result.includes("- [x] First task ✅ 2026-03-25"));
+      assert.ok(result.includes("- [x] Second task ✅ 2026-03-25"));
+      assert.ok(result.includes("- [x] Third task ✅ 2026-03-25"));
+    });
+
+    it("skips specified lines as cancelled", () => {
+      writeProject(
+        "proj",
+        `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] Keep this
+- [ ] Cancel this
+
+## Changelog`,
+      );
+
+      const output = runWork(
+        "close-tasks",
+        projectPath("proj"),
+        "--skip=9",
+        "--date=2026-03-25",
+      );
+      assert.match(output, /1\t1/);
+
+      const result = fs.readFileSync(projectPath("proj"), "utf-8");
+      assert.ok(result.includes("- [x] Keep this ✅ 2026-03-25"));
+      assert.ok(result.includes("- [-] Cancel this"));
+    });
+  });
+
+  describe("work close-project", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("completes project with summary", () => {
+      writeProject(
+        "proj",
+        `---
+status: active
+---
+
+# Proj
+
+## Tasks
+
+## Changelog
+- [x] Did something ✅ 2026-03-20
+
+## Notes`,
+      );
+
+      writeDailyNote("2026-03-25", "## Tasks\n\n## Log\n");
+
+      runWork("close-project", "proj", "Summary text", "--date=2026-03-25");
+
+      const result = fs.readFileSync(projectPath("proj"), "utf-8");
+      assert.ok(result.includes("status: completed"));
+      assert.ok(result.includes("completed_at: 2026-03-25"));
+    });
+
+    it("rejects when open tasks remain", () => {
+      writeProject(
+        "proj",
+        `---
+status: active
+---
+
+# Proj
+
+## Tasks
+- [ ] Still open
+
+## Changelog`,
+      );
+
+      writeDailyNote("2026-03-25", "## Tasks\n\n## Log\n");
+
+      assert.throws(
+        () => runWork("close-project", "proj", "Summary", "--date=2026-03-25"),
+        /open tasks remain/,
+      );
+    });
+  });
+
+  describe("work close-plan", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("marks plan as done with findings flag", () => {
+      const planFile = path.join(tmpDir, "test-plan.md");
+      fs.writeFileSync(
+        planFile,
+        `---
+status: active
+project: "[[projects/proj/project|Proj]]"
+---
+
+# Test Plan
+
+## Approach
+Do the thing.`,
+      );
+
+      runWork("close-plan", planFile);
+
+      const result = fs.readFileSync(planFile, "utf-8");
+      assert.ok(result.includes("status: done"));
+      assert.ok(result.includes("findings_extracted: true"));
+      assert.ok(!result.includes("status: active"));
+    });
+  });
+
   describe("work help", () => {
     beforeEach(setup);
     afterEach(teardown);

@@ -8,7 +8,7 @@ const { ensure, logSyncEntries, inject, injectReviews } = require(path.join(LIB,
 const { fetchReviews, fetchReviewsAsync } = require(path.join(LIB, 'reviews.js'));
 const { notePath, todayStr, VAULT_ROOT, PROJECT_DIR, projectDir, projectFile } = require(path.join(LIB, 'paths.js'));
 const { scanOpenItems, formatScanTSV, syncCheck, listTasks, setTaskState } = require(path.join(LIB, 'scan.js'));
-const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, archivePlans, extractFindings, listProjects, syncPlans } = require(path.join(LIB, 'project.js'));
+const { createProject, resolveProject, parseChangelog, completeProjects, archiveProject, archivePlans, extractFindings, listProjects, syncPlans, closeTasks, closeProject, closePlan } = require(path.join(LIB, 'project.js'));
 const { writeWeeklySummary, isoWeek } = require(path.join(LIB, 'summary.js'));
 const { enqueue, dequeue } = require(path.join(LIB, 'queue.js'));
 const { parse, serialize, appendToSection, extractSection, getTitle, parseFrontmatter } = require(path.join(LIB, 'markdown.js'));
@@ -263,6 +263,34 @@ const commands = {
       throw new Error('usage: work resolve-project <plan-file>');
     }
     resolveProject(positional[0]);
+  },
+
+  'close-tasks'() {
+    const { opts, positional } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    if (positional.length < 1) {
+      throw new Error('usage: work close-tasks <file> [--skip=<line1,line2,...>]');
+    }
+    const skipLines = opts.skip ? opts.skip.split(',').map(Number) : [];
+    const result = closeTasks(positional[0], skipLines, dateStr);
+    process.stdout.write(`${result.completed}\t${result.cancelled}\n`);
+  },
+
+  'close-project'() {
+    const { opts, positional } = parseOpts(args.slice(1));
+    const dateStr = getDate(opts);
+    if (positional.length < 2) {
+      throw new Error('usage: work close-project <slug> <summary>');
+    }
+    closeProject(positional[0], positional[1], dateStr);
+  },
+
+  'close-plan'() {
+    const { positional } = parseOpts(args.slice(1));
+    if (positional.length < 1) {
+      throw new Error('usage: work close-plan <plan-file>');
+    }
+    closePlan(positional[0]);
   },
 
   'check-off'() {
@@ -570,6 +598,9 @@ Commands:
   complete <file> <desc>       Check off task and log to daily note
   create-project <slug> <title> Create a new project file
   archive-project <slug>       Archive project and associated plans
+  close-tasks <file> [--skip=L] Bulk-close open tasks (done or cancelled)
+  close-project <slug> <summary> Complete project with summary
+  close-plan <plan-file>         Mark plan as done with findings flag
   resolve-project <plan-file>  Find project file from plan frontmatter
   paths [vault|projects]         Print configured paths
   parse-changelog <file> <pat> Extract matching changelog lines (TSV)
