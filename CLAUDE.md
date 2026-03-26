@@ -56,7 +56,7 @@ Daily    1──* Log entry (daily ## Log, each entry wikilinks back to source p
 5. `logSyncEntries()` appends missing entries to daily `## Log`
 
 **`work complete <project-file> <description>`:**
-1. `checkOff()` marks item done in project file — checks `## Tasks` first, then `## Changelog`, appends to `## Changelog` if not found
+1. `closeTask()` marks item done in project file — checks `## Tasks` first, then `## Changelog`, appends to `## Changelog` if not found
 2. `appendLog()` writes `- [x] description ✅ YYYY-MM-DD — [[projects/slug|Title]]` to daily `## Log`
 
 ### Lifecycles

@@ -106,4 +106,4 @@ function appendLog(
   if (!quiet) console.log(entry);
 }
 
-module.exports = { closeTask, applyCloseTask, checkOff: closeTask, appendLog };
+module.exports = { closeTask, applyCloseTask, appendLog };
