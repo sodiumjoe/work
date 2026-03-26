@@ -1317,4 +1317,69 @@ project: "[[projects/theta/project]]"
       assert.ok(result.includes("- [[no-title]]"));
     });
   });
+
+  describe("extractFindings", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("skips plans with findings_extracted: true", () => {
+      writeProject(
+        "proj",
+        `---
+status: evergreen
+---
+
+# Evergreen
+
+## Plans
+
+## Tasks
+
+## Changelog`,
+      );
+      const archivePath = path.join(tmpDir, "archive", "projects", "proj");
+      fs.mkdirSync(archivePath, { recursive: true });
+      fs.writeFileSync(
+        path.join(archivePath, "plan.md"),
+        `---
+status: done
+findings_extracted: true
+project: "[[projects/proj/project]]"
+---
+
+# Plan
+
+## Notes
+Some implementation notes here.`,
+      );
+      fs.writeFileSync(
+        path.join(tmpDir, "2026-03-25.md"),
+        `---
+id: "2026-03-25"
+tags: [daily-notes]
+---
+
+# 2026-03-25
+
+## Tasks
+
+## Log`,
+      );
+      process.env.WORK_CLAUDE_CMD = "false";
+      const { extractFindings } = requireFresh();
+      const archivedPlans = [
+        {
+          slug: "proj",
+          file: "plan.md",
+          basename: "plan",
+          title: "Plan",
+          archivePath: path.join(archivePath, "plan.md"),
+        },
+      ];
+      const findings = extractFindings(archivedPlans, "2026-03-25", {
+        quiet: true,
+      });
+      assert.equal(findings.length, 0);
+    });
+  });
 });

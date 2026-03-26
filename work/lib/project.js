@@ -206,6 +206,18 @@ function extractFindings(archivedPlans, dateStr, { quiet } = {}) {
   const { execFileSync } = require("node:child_process");
   const findings = [];
   for (const plan of archivedPlans) {
+    const planContent = fs.readFileSync(plan.archivePath, "utf-8");
+    const planFm = parseFrontmatter(planContent);
+    if (
+      planFm.findings_extracted === "true" ||
+      planFm.findings_extracted === true
+    ) {
+      if (!quiet)
+        console.log(
+          `skipping findings for ${plan.basename} (already extracted)`,
+        );
+      continue;
+    }
     const pf = projectFile(plan.slug);
     const prompt = `Read the archived plan file at ${plan.archivePath} and the project file at ${pf}.
 
