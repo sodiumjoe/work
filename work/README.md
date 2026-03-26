@@ -104,9 +104,9 @@ If any step fails, `tick` spawns Claude to file a diagnostic task in the work pr
 
 ### Project lifecycle
 
-Active projects with no open tasks get a synthetic `Review project: <title>` entry injected into the queue, ensuring every active project stays visible. When all changelog items in a project are checked off, `completeProjects` (called by `wrap`) flips the project status from `active` to `completed`. Completed projects are proposed for archival in the next weekly tick; once approved, `archiveProject` moves the entire project directory to `$WORK_VAULT/archive/projects/`.
+Active projects with no open tasks get a synthetic `Review project: <title>` entry injected into the queue, ensuring every active project stays visible. When all changelog items in a project are checked off, `completeProjects` (called by `wrap`) flips the project status from `active` to `completed`. The `/complete-project` command provides an explicit alternative: it triages remaining open tasks (done or skipped), generates a changelog summary, extracts findings, and stamps the project completed. Completed projects are proposed for archival in the next weekly tick; once approved, `archiveProject` moves the entire project directory to `$WORK_VAULT/archive/projects/`.
 
-Evergreen projects are never completed, but their individual plans accumulate over time. `archivePlans` (called by `tick`) finds plan files with `status: done/completed` inside evergreen project directories, moves them to `archive/projects/<slug>/`, and spawns Claude to extract findings worth preserving into the project's Notes section.
+Evergreen projects are never completed, but their individual plans accumulate over time. `/complete-project` on an evergreen project closes a specific plan: it generates a summary for the project changelog, extracts findings, and marks the plan `status: done` with `findings_extracted: true`. `archivePlans` (called by `tick`) then moves done plans to `archive/projects/<slug>/` and spawns Claude to extract findings for plans not already processed (i.e., those without `findings_extracted: true`).
 
 ## CLI
 
@@ -129,6 +129,9 @@ Commands:
   complete <file> <desc>       Check off task and log to daily note
   append-task <file> <desc>    Add a new task to a project's Tasks section
   create-project <slug> <title> Create a new project file
+  close-tasks <file> [--skip=L] Bulk-close open tasks (done or cancelled)
+  close-project <slug> <summary> Complete project with summary
+  close-plan <plan-file>         Mark plan as done with findings flag
   archive-project <slug>       Archive project and associated plans
   resolve-project <plan-file>  Find project file from plan frontmatter
   paths [vault|projects]       Print configured paths
@@ -162,6 +165,7 @@ Both `<leader>ap` and `<leader>aP` destroy the existing agentic session, set `CL
 |---------|-------------|
 | `/note` | Append a note, link, or discovery to today's daily note |
 | `/name` | Set a descriptive label on the current tmux window |
+| `/complete-project` | Close out a project (active) or plan (evergreen) with task triage, findings, and summary |
 | `/archive-plans` | Archive completed plans and write a monthly summary |
 | `/write-plan` | Create an implementation plan for a project |
 | `/create-project` | Brainstorm scope and create a new project |
@@ -195,7 +199,7 @@ Path: `$WORK_VAULT/YYYY-MM-DD.md` (default: `~/work/YYYY-MM-DD.md`)
 ## Tasks
 - [ ] Open task — [[projects/project-slug|Project Title]]
 - [/] In-progress task — [[projects/project-slug|Project Title]]
-- [ ] Standalone task — [[plans/plan-file|Plan Title]]
+- [ ] Standalone task — [[projects/slug/plan-file|Plan Title]]
 
 ## Log
 - [x] Completed item ✅ YYYY-MM-DD — [[projects/project-slug|Project Title]]
@@ -232,9 +236,8 @@ Tasks live in `## Tasks`; when checked off, `promote` moves them to `## Changelo
 
 ### Plan file format
 
-Path: `$WORK_VAULT/plans/YYYY-MM-DD-slug.md`
+Path: `$WORK_VAULT/projects/<slug>/YYYY-MM-DD-plan-name.md` (colocated with the project)
 
-With project (no changelog — project owns the canonical task list):
 ```markdown
 ---
 status: active
@@ -249,19 +252,7 @@ project: "[[projects/project-slug]]"
 ## Notes
 ```
 
-Without project (standalone, has its own changelog):
-```markdown
----
-status: active
----
-
-# Plan Title
-## Context
-## Approach
-## Changelog
-- [x] Step ✅ YYYY-MM-DD
-## Notes
-```
+Plans always belong to a project (the `project` frontmatter field is required). The project owns the canonical task list and changelog — plans do not have their own `## Changelog`.
 
 ### Checkbox states
 
@@ -281,12 +272,11 @@ Config file: `$XDG_CONFIG_HOME/work/config.json` (default `~/.config/work/config
 
 ```json
 {
-  "vault": "/path/to/obsidian/vault",
-  "plans": "/path/to/plans"
+  "vault": "/path/to/obsidian/vault"
 }
 ```
 
-All fields are optional. The `WORK_VAULT` environment variable takes precedence over the config file `vault` field. Default vault: `~/work`. Default plans: `$WORK_VAULT/plans`.
+All fields are optional. The `WORK_VAULT` environment variable takes precedence over the config file `vault` field. Default vault: `~/work`.
 
 ## File layout
 
@@ -295,7 +285,7 @@ All fields are optional. The `WORK_VAULT` environment variable takes precedence 
 | `$WORK_VAULT/` | Obsidian vault root |
 | `$WORK_VAULT/YYYY-MM-DD.md` | Daily notes |
 | `$WORK_VAULT/projects/<slug>/project.md` | Project files |
-| `$WORK_VAULT/plans/` | Active plan files |
+| `$WORK_VAULT/projects/<slug>/*.md` | Plan files (colocated with project) |
 | `$WORK_VAULT/archive/` | Archived projects and plans |
 | `$WORK_VAULT/weekly/YYYY-WNN.md` | Weekly work summaries |
 
