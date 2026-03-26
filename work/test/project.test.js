@@ -951,6 +951,92 @@ status: active
     });
   });
 
+  describe("closePlan", () => {
+    beforeEach(setup);
+    afterEach(teardown);
+
+    it("sets plan status to done and adds findings_extracted flag", () => {
+      writeProject(
+        "proj",
+        `---
+status: evergreen
+---
+
+# Proj
+
+## Plans
+
+## Tasks
+
+## Changelog`,
+      );
+      writePlanInProject(
+        "proj",
+        "2026-03-25-feature.md",
+        `---
+status: active
+project: "[[projects/proj/project]]"
+---
+
+# Feature Plan`,
+      );
+
+      const { closePlan } = requireFresh();
+      const planPath = path.join(
+        tmpDir,
+        "projects",
+        "proj",
+        "2026-03-25-feature.md",
+      );
+      closePlan(planPath, { quiet: true });
+
+      const content = fs.readFileSync(planPath, "utf-8");
+      assert.ok(content.includes("status: done"));
+      assert.ok(content.includes("findings_extracted: true"));
+      assert.ok(!content.includes("status: active"));
+    });
+
+    it("works on plans already marked done (just adds findings_extracted)", () => {
+      writeProject(
+        "proj",
+        `---
+status: evergreen
+---
+
+# Proj
+
+## Plans
+
+## Tasks
+
+## Changelog`,
+      );
+      writePlanInProject(
+        "proj",
+        "2026-03-25-feature.md",
+        `---
+status: done
+project: "[[projects/proj/project]]"
+---
+
+# Feature Plan`,
+      );
+
+      const { closePlan } = requireFresh();
+      const planPath = path.join(
+        tmpDir,
+        "projects",
+        "proj",
+        "2026-03-25-feature.md",
+      );
+      closePlan(planPath, { quiet: true });
+
+      const content = fs.readFileSync(planPath, "utf-8");
+      assert.ok(content.includes("status: done"));
+      assert.ok(content.includes("findings_extracted: true"));
+    });
+  });
+
   describe("syncPlans", () => {
     beforeEach(setup);
     afterEach(teardown);

@@ -403,6 +403,23 @@ function closeProject(slug, summary, dateStr, { quiet } = {}) {
   if (!quiet) console.log(`closed project: ${title} (${slug})`);
 }
 
+function closePlan(planFile, { quiet } = {}) {
+  if (!fs.existsSync(planFile)) {
+    throw new Error(`plan not found: ${planFile}`);
+  }
+  atomicRewrite(planFile, (c) => {
+    c = c.replace(/^status:\s*active\s*$/m, "status: done");
+    if (!/^findings_extracted:/m.test(c)) {
+      c = c.replace(
+        /^status:\s*(done|completed)\s*$/m,
+        (match) => `${match}\nfindings_extracted: true`,
+      );
+    }
+    return c;
+  });
+  if (!quiet) console.log(`closed plan: ${path.basename(planFile)}`);
+}
+
 module.exports = {
   createProject,
   resolveProject,
@@ -415,4 +432,5 @@ module.exports = {
   syncPlans,
   closeTasks,
   closeProject,
+  closePlan,
 };
