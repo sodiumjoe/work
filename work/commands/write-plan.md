@@ -105,15 +105,4 @@ git commit -m "feat: description"
 
 ## Execution Handoff
 
-After saving the plan, offer execution choice:
-
-**"Plan saved to `<path>`. Two execution options:**
-
-**1. Subagent-Driven (this session)** — dispatch fresh subagent per task, review between tasks
-
-**2. Parallel Session (separate)** — open new session, use work:execute-plan
-
-**Which approach?"**
-
-If Subagent-Driven: use work:subagent-driven-development.
-If Parallel Session: guide user to open new session and invoke work:execute-plan.
+After saving the plan, hand off to work:subagent-driven-development to execute it in the current session.
